@@ -1,127 +1,127 @@
-# TAG Express - Web Application
+# TAG Express - Application Web
 
-A modern web application for managing and searching transportation routes using the TAG (Transports de l'Agglomération Grenobloise) transit system.
+Une application web moderne pour gérer et rechercher des trajets de transport utilisant le système de transit TAG (Transports de l'Agglomération Grenobloise).
 
-## Features
+## Fonctionnalités
 
-- **Multi-trajectory Management**: Save and manage up to 3 different routes (T1, T2, T3) with persistent storage
-- **Route Search**: Search for transportation routes with filters by departure, arrival, and line number
-- **Persistent Storage**: All trajectories are automatically saved to browser's localStorage
-- **Time Navigation**: Navigate between different time slots for the same route
-- **Responsive Design**: Works seamlessly on mobile and desktop devices
-- **Real-time Data**: Integrates with TAG's API for live route information
-- **Quick Search**: Fast search functionality for one-off route queries
+- **Gestion Multi-Trajets** : Enregistrez et gérez jusqu'à 3 trajets différents (T1, T2, T3) avec sauvegarde persistante
+- **Recherche de Trajets** : Recherchez des trajets de transport avec filtres par départ, arrivée et numéro de ligne
+- **Stockage Persistant** : Tous les trajets sont automatiquement sauvegardés dans le localStorage du navigateur
+- **Navigation Temporelle** : Naviguez entre différents créneaux horaires pour le même trajet
+- **Design Responsive** : Fonctionne parfaitement sur les appareils mobiles et de bureau
+- **Données en Temps Réel** : Intégration avec l'API TAG pour des informations actualisées
+- **Recherche Rapide** : Fonctionnalité de recherche rapide pour des requêtes ponctuelles
 
-## Technology Stack
+## Stack Technologique
 
-- **Frontend**: React 18
-- **Build Tool**: Vite
-- **Styling**: Tailwind CSS
-- **Routing**: React Router v6
-- **HTTP Client**: Fetch API
-- **Data Source**: TAG Mobilités API (data.mobilites-m.fr)
+- **Frontend** : React 18
+- **Outil de Build** : Vite
+- **Styling** : Tailwind CSS
+- **Routage** : React Router v6
+- **Client HTTP** : Fetch API
+- **Source Données** : API TAG Mobilités (data.mobilites-m.fr)
 
-## Getting Started
+## Démarrage
 
-### Prerequisites
+### Prérequis
 
-- Node.js (v14 or higher)
-- npm or yarn
+- Node.js (v14 ou supérieur)
+- npm ou yarn
 
 ### Installation
 
-1. Clone the repository:
+1. Clonez le repository :
 ```bash
 git clone https://github.com/Palmine38/Web-TAG-express.git
 cd Web-TAG-express
 ```
 
-2. Install dependencies:
+2. Installez les dépendances :
 ```bash
 npm install
 ```
 
-3. Start the development server:
+3. Lancez le serveur de développement :
 ```bash
 npm run dev
 ```
 
-4. Build for production:
+4. Buildez pour la production :
 ```bash
 npm run build
 ```
 
-## Project Structure
+## Structure du Projet
 
 ```
 src/
 ├── components/
-│   ├── mestrajets.jsx      # Main component for multi-trajectory management
-│   ├── testhome.jsx        # Quick search page
-│   └── navbar.jsx          # Navigation bar
-├── App.jsx                 # Main app component
-├── App.css                 # Global styles
-└── main.jsx               # Entry point
+│   ├── mestrajets.jsx      # Composant principal de gestion des trajets
+│   ├── testhome.jsx        # Page de recherche rapide
+│   └── navbar.jsx          # Barre de navigation
+├── App.jsx                 # Composant principal
+├── App.css                 # Styles globaux
+└── main.jsx               # Point d'entrée
 ```
 
-## Key Components
+## Composants Principaux
 
-### Mes Trajets (My Routes)
-- Manage up to 3 saved routes
-- View and modify route details (departure, arrival, line)
-- Auto-save functionality with visual feedback
-- Persistent storage across sessions
+### Mes Trajets
+- Gérez jusqu'à 3 trajets sauvegardés
+- Visualisez et modifiez les détails des trajets (départ, arrivée, ligne)
+- Sauvegarde automatique avec retour visuel
+- Persistance des données entre les sessions
 
-### Recherche Rapide (Quick Search)
-- One-time route search without saving
-- Same search capabilities as the saved routes
-- Quick results display
+### Recherche Rapide
+- Recherche ponctuelle sans sauvegarde
+- Mêmes capacités de recherche que les trajets sauvegardés
+- Affichage rapide des résultats
 
-### Navbar
-- Navigation between pages
-- Hamburger menu for mobile
-- Responsive design
+### Barre de Navigation
+- Navigation entre les pages
+- Menu hamburger pour mobile
+- Design responsive
 
-## API Integration
+## Intégration API
 
-The application uses the TAG Mobilités open API:
-- **Base URL**: `https://data.mobilites-m.fr/api/routers/default`
-- Fetches available routes, stops, and itineraries
-- Real-time transportation data
+L'application utilise l'API ouverte TAG Mobilités :
+- **URL de Base** : `https://data.mobilites-m.fr/api/routers/default`
+- Récupère les trajets disponibles, arrêts et itinéraires
+- Données de transport en temps réel
 
-## Features in Detail
+## Fonctionnalités en Détail
 
-### Route Saving
-- Save departure, arrival, and line preferences
-- Auto-restore on page reload
-- Color-coded buttons indicate saved vs unsaved routes
+### Sauvegarde de Trajets
+- Enregistrez les préférences de départ, arrivée et ligne
+- Restauration automatique au rechargement de la page
+- Boutons avec codes couleur pour trajets sauvegardés/non-sauvegardés
 
-### Search Filtering
-- Filter by specific line number
-- Supports multiple line formats (E, A, C1, etc.)
-- Results limited to routes under 35 minutes
-- Time offset navigation for different time slots
+### Filtrage de Recherche
+- Filtrez par numéro de ligne spécifique
+- Supporte plusieurs formats de ligne (E, A, C1, etc.)
+- Résultats limités aux trajets de moins de 35 minutes
+- Navigation temporelle pour différents créneaux horaires
 
-### State Management
-- React hooks for state management
-- localStorage for persistence
-- Separate cache for search results per trajectory
+### Gestion d'État
+- Hooks React pour la gestion d'état
+- localStorage pour la persistance
+- Cache séparé pour les résultats de recherche par trajet
 
-## Browser Compatibility
+## Compatibilité Navigateurs
 
-- Chrome/Chromium (latest)
-- Firefox (latest)
-- Safari (latest)
-- Edge (latest)
+- Chrome/Chromium (dernière version)
+- Firefox (dernière version)
+- Safari (dernière version)
+- Edge (dernière version)
 
-## License
+## Licence
 
-This project is open source and available under the MIT License.
+Ce projet est open source et disponible sous la licence MIT.
 
-## Author
+## Auteur
 
-Created by [Palmine38](https://github.com/Palmine38)
+Créé par [Palmine38](https://github.com/Palmine38)
 
-## Contributing
+## Contribution
 
-Contributions are welcome! Please feel free to submit pull requests or open issues for bugs and feature requests.
+Les contributions sont les bienvenues ! N'hésitez pas à soumettre des pull requests ou ouvrir des issues pour les bugs et demandes de fonctionnalités.
