@@ -8,16 +8,7 @@
 
 ## Captures d'écran de /mes-trajets/
 
-![Interface principale](.screenshots/img1.png)
-*Interface des trajets.*
-
-### Sidebar des détails
-![Sidebar ouverte](.screenshots/img2.png)
-*Configuration du trajet.*
-
-### Vue mobile
-![Vue mobile](.screenshots/img3.png)
-*Trajet 1 configuré et sauvegardé.*
+![Interface principale](.screenshots/img4.png)
 
 ## Fonctionnalités
 
