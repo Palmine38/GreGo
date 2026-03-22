@@ -16,7 +16,7 @@ export default function Navbar({ title, menuOpen, setMenuOpen, onMenuOpen, showH
     return (
         <nav className="bg-white border-b border-gray-300 shadow-sm sticky top-0 z-30">
             <div className="flex items-center justify-between px-4 py-3">
-                {/* Hamburger Menu */}
+                {/*menue hamburger */}
                 {showHamburger && (
                     <button
                         onClick={toggleMenu}
@@ -35,14 +35,12 @@ export default function Navbar({ title, menuOpen, setMenuOpen, onMenuOpen, showH
                     </button>
                 )}
 
-                {/* Title */}
+                {/* tittre */}
                 <h1 className="text-lg font-bold text-center flex-1">{title}</h1>
-
-                {/* Spacer for alignment */}
                 <div className="w-10"></div>
             </div>
 
-            {/* Dropdown Menu */}
+            {/* menu de la navbar */}
             <div className={`overflow-hidden transition-all duration-300 ${menuOpen ? 'max-h-60' : 'max-h-0'}`}>
                 <ul className="flex flex-col bg-white border-t border-gray-300">
                     <li>

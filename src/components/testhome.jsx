@@ -31,7 +31,7 @@ export default function TestHome() {
     const [menuOpen, setMenuOpen] = useState(false);
 
     useEffect(() => {
-        // Chargement initial des arrêts de toutes les lignes SEM.
+        // chargement initiale des arrets de toutes les lignes sem
         const fetchStops = async () => {
             try {
                 const routesResp = await fetch('https://data.mobilites-m.fr/api/routers/default/index/routes');
@@ -54,7 +54,7 @@ export default function TestHome() {
                                 newMap[key] = [`${stop.id}::${stop.lat},${stop.lon}`, stop.name];
                             });
                         } catch {
-                            // ignore une ligne échouée
+                            // ignore une ligne échouer
                         }
                     })
                 );
@@ -83,7 +83,6 @@ export default function TestHome() {
     const suggestionsFor = (value) => {
         if (!value.trim()) return [];
         const q = value.trim().toLowerCase();
-        // ne propose rien quand le terme est déjà un arrêt exact
         if (stopsMap[q]) return [];
 
         const matched = Object.keys(stopsMap)
@@ -304,10 +303,6 @@ export default function TestHome() {
                             </button>
                         )}
                     </div>
-
-                    {/* <div className="mt-4 text-sm text-gray-500">
-                    Résultats pour {searchBaseDate.toTimeString().slice(0, 5)}
-                </div> */}
                 </div>
 
                 {!inputsOpen && (
