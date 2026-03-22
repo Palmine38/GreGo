@@ -22,6 +22,7 @@ const DEFAULT_TRAJET = { line: '', depId: '', arrId: '', depName: '', arrName: '
 export default function MesTrajets() {
     const [searchParams, setSearchParams] = useSearchParams();
     const [stopsMap, setStopsMap] = useState(FALLBACK_STOPS);
+    const [stopsLoaded, setStopsLoaded] = useState(false);
     const [currentTrajet, setCurrentTrajet] = useState('T1');
     const [trajets, setTrajets] = useState({
         T1: { ...DEFAULT_TRAJET },
@@ -78,8 +79,7 @@ export default function MesTrajets() {
                 const semLines = routes
                     .map((route) => route.id)
                     .filter((id) => id?.startsWith('SEM:'))
-                    .map((id) => id.replace('SEM:', ''))
-                    .slice(0, 20);
+                    .map((id) => id.replace('SEM:', ''));
 
                 const newMap = { ...FALLBACK_STOPS };
 
@@ -99,8 +99,10 @@ export default function MesTrajets() {
                 );
 
                 setStopsMap(newMap);
+                setStopsLoaded(true);
             } catch {
                 setStopsMap(FALLBACK_STOPS);
+                setStopsLoaded(true);
             }
         };
 
@@ -179,6 +181,17 @@ export default function MesTrajets() {
 
         localStorage.setItem('tag-express-active-trajet', activeKey);
     }, []);
+
+    // Pre-search for all configured trajets once stops and trajets are loaded
+    useEffect(() => {
+        if (stopsLoaded && hasLoadedRef.current) {
+            ['T1', 'T2', 'T3'].forEach(t => {
+                if (trajets[t] && trajets[t].depName && trajets[t].arrName) {
+                    search(0, { dep: trajets[t].depName, arr: trajets[t].arrName, line: trajets[t].line, trajetKey: t, save: false });
+                }
+            });
+        }
+    }, [stopsLoaded, trajets]);
 
     // Charger depuis URL si paramètres présents
     useEffect(() => {
@@ -279,14 +292,15 @@ export default function MesTrajets() {
     const loadTrajet = (trajetKey) => {
         const trajet = trajets[trajetKey];
         const cache = searchCache[trajetKey];
+        const isCacheValid = cache?.searchBaseDate && new Date().toDateString() === cache.searchBaseDate.toDateString();
         setCurrentTrajet(trajetKey);
         setDep(trajet.depName || '');
         setArr(trajet.arrName || '');
         setLine(trajet.line || '');
-        setResults(cache?.results || []);
-        setError(cache?.error || '');
-        setTimeOffset(cache?.timeOffset || 0);
-        setSearchBaseDate(cache?.searchBaseDate || new Date());
+        setResults(isCacheValid ? cache?.results || [] : []);
+        setError(isCacheValid ? cache?.error || '' : '');
+        setTimeOffset(isCacheValid ? cache?.timeOffset || 0 : 0);
+        setSearchBaseDate(isCacheValid ? cache?.searchBaseDate || new Date() : new Date());
         setInputsOpen(false);
 
         // Sauvegarder le trajet actif
@@ -297,40 +311,50 @@ export default function MesTrajets() {
         const depValue = params.dep !== undefined ? params.dep : dep;
         const arrValue = params.arr !== undefined ? params.arr : arr;
         const lineValue = params.line !== undefined ? params.line : line;
+        const trajetKey = params.trajetKey || currentTrajet;
+        const shouldSave = params.save !== false; // default true
+        const shouldUpdateGlobal = !params.trajetKey || params.trajetKey === currentTrajet;
 
-        setDep(depValue);
-        setArr(arrValue);
-        setLine(lineValue);
-
-        setError('');
-        setLoading(true);
+        if (shouldUpdateGlobal) {
+            setDep(depValue);
+            setArr(arrValue);
+            setLine(lineValue);
+            setError('');
+            setLoading(true);
+        }
 
         const from = findStop(depValue);
         const to = findStop(arrValue);
 
         if (!from) {
-            setError(`Arrêt de départ '${dep}' non trouvé.`);
-            setLoading(false);
+            if (shouldUpdateGlobal) {
+                setError(`Arrêt de départ '${depValue}' non trouvé.`);
+                setLoading(false);
+            }
             return;
         }
         if (!to) {
-            setError(`Arrêt d'arrivée '${arr}' non trouvé.`);
-            setLoading(false);
+            if (shouldUpdateGlobal) {
+                setError(`Arrêt d'arrivée '${arrValue}' non trouvé.`);
+                setLoading(false);
+            }
             return;
         }
 
-        // Sauvegarder automatiquement le trajet dans localStorage
-        const newTrajets = {
-            ...trajets,
-            [currentTrajet]: {
-                line: lineValue.toUpperCase(),
-                depId: from[0].split('::')[0].replace('SEM:', ''),
-                arrId: to[0].split('::')[0].replace('SEM:', ''),
-                depName: from[1],
-                arrName: to[1]
-            }
-        };
-        setTrajets(newTrajets);
+        if (shouldSave) {
+            // Sauvegarder automatiquement le trajet dans localStorage
+            const newTrajets = {
+                ...trajets,
+                [trajetKey]: {
+                    line: lineValue.toUpperCase(),
+                    depId: from[0].split('::')[0].replace('SEM:', ''),
+                    arrId: to[0].split('::')[0].replace('SEM:', ''),
+                    depName: from[1],
+                    arrName: to[1]
+                }
+            };
+            setTrajets(newTrajets);
+        }
 
         const baseTime = searchBaseDate;
         const time = new Date(baseTime.getTime() + offset * 60 * 60 * 1000);
@@ -387,20 +411,26 @@ export default function MesTrajets() {
                 });
 
             if (filtered.length === 0) {
-                setError('⚠️ Aucun itinéraire trouvé pour ce créneau.');
+                if (shouldUpdateGlobal) {
+                    setError('⚠️ Aucun itinéraire trouvé pour ce créneau.');
+                }
             } else {
-                setError('');
+                if (shouldUpdateGlobal) {
+                    setError('');
+                }
             }
 
-            setResults(filtered);
-            setTimeOffset(offset);
-            setSearchBaseDate(baseTime);
-            setInputsOpen(false);
+            if (shouldUpdateGlobal) {
+                setResults(filtered);
+                setTimeOffset(offset);
+                setSearchBaseDate(baseTime);
+                setInputsOpen(false);
+            }
 
             // Sauvegarder dans le cache
             setSearchCache(prev => ({
                 ...prev,
-                [currentTrajet]: {
+                [trajetKey]: {
                     results: filtered,
                     timeOffset: offset,
                     searchBaseDate: baseTime,
@@ -409,13 +439,15 @@ export default function MesTrajets() {
             }));
         } catch (err) {
             const errorMsg = 'Erreur réseau / API : ' + (err.message || err);
-            setError(errorMsg);
-            setResults([]);
+            if (shouldUpdateGlobal) {
+                setError(errorMsg);
+                setResults([]);
+            }
 
             // Sauvegarder erreur dans le cache
             setSearchCache(prev => ({
                 ...prev,
-                [currentTrajet]: {
+                [trajetKey]: {
                     results: [],
                     timeOffset: 0,
                     searchBaseDate: new Date(),
@@ -423,16 +455,17 @@ export default function MesTrajets() {
                 }
             }));
         } finally {
-            setLoading(false);
+            if (shouldUpdateGlobal) {
+                setLoading(false);
+            }
         }
     };
 
     const handleAddOneHour = async () => {
-        await search(timeOffset + 1);
+        await search(timeOffset + 1, { trajetKey: currentTrajet, save: false });
     };
 
     const handleSubtractOneHour = async () => {
-        if (timeOffset <= 0) return;
         await search(timeOffset - 1);
     };
 
@@ -472,9 +505,7 @@ export default function MesTrajets() {
 
     const origin = searchBaseDate || new Date();
     const afterDate = new Date(origin.getTime() + (timeOffset + 1) * 60 * 60 * 1000);
-    const beforeDate = new Date(origin.getTime() + (timeOffset - 1) * 60 * 60 * 1000);
     const afterLabel = `après ${afterDate.toTimeString().slice(0, 5)}`;
-    const beforeLabel = `avant ${beforeDate.toTimeString().slice(0, 5)}`;
 
     return (
         <>
@@ -574,10 +605,10 @@ export default function MesTrajets() {
                         </table>
                     </div>
 
-                    <div className={`mt-3 flex items-center gap-2 ${timeOffset > 0 ? 'justify-between' : 'justify-end'}`}>
-                        {timeOffset > 0 && results.length > 0 && (
+                    <div className={`mt-3 flex items-center gap-2 ${(results.length > 0 && timeOffset >= 0) ? 'justify-between' : 'justify-end'}`}>
+                        {timeOffset >= 0 && results.length > 0 && (
                             <button
-                                className="text-sm font-semibold text-black hover:text-gray-700 cursor-pointer"
+                                className="px-2 py-1 text-sm font-semibold text-black hover:text-gray-700 cursor-pointer"
                                 onClick={handleSubtractOneHour}
                                 disabled={loading}
                             >
@@ -586,7 +617,7 @@ export default function MesTrajets() {
                         )}
                         {results.length > 0 && (
                             <button
-                                className="text-sm font-semibold text-black hover:text-gray-700 cursor-pointer"
+                                className="px-2 py-1 text-sm font-semibold text-black hover:text-gray-700 cursor-pointer"
                                 onClick={handleAddOneHour}
                                 disabled={loading}
                             >

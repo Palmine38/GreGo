@@ -1,0 +1,16 @@
+{
+    "name": "Tag Express",
+    "short_name": "TagExpress",
+    "description": "Application pour les trajets TAG",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#3b82f6",
+    "icons": [
+        {
+            "src": "/apple-touch-icon.png",
+            "sizes": "180x180",
+            "type": "image/png"
+        }
+    ]
+}
