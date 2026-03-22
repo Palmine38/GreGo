@@ -5,6 +5,7 @@
 # TAG Express - Application Web
 
 > Une application web moderne pour gérer et rechercher des trajets de transport utilisant le système de transit TAG (Transports de l'Agglomération Grenobloise).
+> Cette app est toujours en développement, certains bugs peuvent donc apparaître. Merci de les report dans ```issues``` lorsque cela arrive. 
 
 ## Captures d'écran de /mes-trajets/
 
