@@ -25,7 +25,7 @@ Une application web moderne pour gérer et rechercher des trajets de transport u
 
 ### Prérequis
 
-- Node.js (v14 ou La Poyasupérieur)
+- Node.js (v14 ou supérieur)
 - npm ou yarn
 
 ### Installation
