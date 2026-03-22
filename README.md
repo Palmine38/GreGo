@@ -1,6 +1,24 @@
+[![React](https://img.shields.io/badge/React-18.2.4-blue.svg)](https://reactjs.org/)
+[![Vite](https://img.shields.io/badge/Vite-8.0.1-646CFF.svg)](https://vitejs.dev/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.2.2-38B2AC.svg)](https://tailwindcss.com/)
+
 # TAG Express - Application Web
 
-Une application web moderne pour gérer et rechercher des trajets de transport utilisant le système de transit TAG (Transports de l'Agglomération Grenobloise).
+> Une application web moderne MOBILE ONLY (pour l'instant) pour gérer et rechercher des trajets de transport utilisant le système de transit
+> TAG (Transports de l'Agglomération Grenobloise).
+
+## Captures d'écran de /mes-trajets/
+
+![Interface principale](.screenshots/img1.png)
+*Interface des trajets.*
+
+### Sidebar des détails
+![Sidebar ouverte](.screenshots/img2.png)
+*Configuration du trajet.*
+
+### Vue mobile
+![Vue mobile](.screenshots/img3.png)
+*Trajet 1 configuré et sauvegardé.*
 
 ## Fonctionnalités
 
