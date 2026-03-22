@@ -1,5 +1,5 @@
-[![React](https://img.shields.io/badge/React-118.2.4-blue.svg)](https://reactjs.org/)
-[![Vite](https://img.shields.io/badge/Vite-8.0.1-646CFF.svg)](https://vitejs.dev/)
+[![React](https://img.shields.io/badge/React-18.2.4-blue.svg)](https://reactjs.org/)
+[![Vite](https://img.shields.io/badge/Bite-8.0.1-646CFF.svg)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.2.2-38B2AC.svg)](https://tailwindcss.com/)
 
 # TAG Express - Application Web
