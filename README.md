@@ -2,7 +2,8 @@
 [![Vite](https://img.shields.io/badge/Vite-8.0.1-646CFF.svg)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.2.2-38B2AC.svg)](https://tailwindcss.com/)
 
-# TAG Express - Application Web alpha 1.0
+# TAG Express - Application Web
+## Version alpha 1.0
 
 **Release bugless prévue le 25/03/2026**
 
