@@ -2,7 +2,9 @@
 [![Vite](https://img.shields.io/badge/Vite-8.0.1-646CFF.svg)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.2.2-38B2AC.svg)](https://tailwindcss.com/)
 
-# TAG Express - Application Web
+# TAG Express - Application Web alpha 1.0
+
+**Release bugless prévue le 25/03/2026**
 
 > Une application web moderne pour gérer et rechercher des trajets de transport utilisant le système de transit TAG (Transports de l'Agglomération Grenobloise).
 > Cette app est toujours en développement, certains bugs peuvent donc apparaître. Merci de les report dans ```issues``` lorsque cela arrive. 
