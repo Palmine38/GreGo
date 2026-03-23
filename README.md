@@ -5,7 +5,7 @@
 # TAG Express - Application Web
 ## Version alpha 1.0
 
-**Application disponible [sur le site de MRESO](https://www.reso-m.fr/mreso-express.htm)    jusqu'au 27 mars !**
+**Application disponible [sur le site de MRESO](http://www.reso-m.fr/mreso-express)   jusqu'au 27 mars !**
 
 **Release bugless prévue le 25/03/2026**
 
