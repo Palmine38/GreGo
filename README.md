@@ -32,6 +32,7 @@
 - **Exporter/importer json** : vous pourrez exporter votre fichier de configuration des trajets, afin de retrouver vos trajets d'un appareil à l'autre
 - **Arrêts favoris** :  dans la barre de recherche rapide, vous pourrez ajouter/enlevez des arrets favoris.
 - **Onglet de paramètres** : Vous pourrez changer le thème de l'app, changer les paramètres de recherche d'itinéraires...
+- **Bouton refresh** : bouton refresh sur les-pages mes trajets et recherche rapide.
 
 ## Stack Technologique
 
