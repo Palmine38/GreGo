@@ -3,9 +3,9 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.2.2-38B2AC.svg)](https://tailwindcss.com/)
 
 # TAG Express - Application Web
-## Version alpha 1.0
+### Version alpha 1.0
 
-**Application disponible [sur le site de Mréso](http://www.reso-m.fr/mreso-express)   jusqu'au 27 mars !**
+## Application disponible [sur le site de Mréso](http://www.reso-m.fr/mreso-express)   jusqu'au 27 mars !
 
 **Release bugless prévue le 25/03/2026**
 
