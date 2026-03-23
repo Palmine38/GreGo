@@ -26,8 +26,11 @@
 ## Fonctionnalités à venir prochainement
 
 - **Editer nom trajets** : vous pourrez éditer le noms de vos trajets.
+- **Support des correspondances** : vous pourrez mettre 2 arrêts pas de la même ligne dans la recherche rapide uniquement.
 - **Créer jusqu'à 5 trajets** : vous pourrez créer jusqu'à 5 trajets.
-- **exporter/importer json** : vous pourrez exporter votre fichier de configuration des trajets, afin de retrouver vos trajets d'un appareil à l'autre
+- **Exporter/importer json** : vous pourrez exporter votre fichier de configuration des trajets, afin de retrouver vos trajets d'un appareil à l'autre
+- **Arrêts favoris** :  dans la barre de recherche rapide, vous pourrez ajouter/enlevez des arrets favoris.
+- **Onglet de paramètres** : Vous pourrez changer le thème de l'app, changer les paramètres de recherche d'itinéraires...
 
 ## Stack Technologique
 
