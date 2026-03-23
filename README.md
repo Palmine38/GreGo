@@ -23,6 +23,12 @@
 - **Données en Temps Réel** : Intégration avec l'API TAG pour des informations actualisées
 - **Recherche Rapide** : Fonctionnalité de recherche rapide pour des requêtes ponctuelles
 
+## Fonctionnalités à venir prochainement
+
+- **Editer nom trajets** : vous pourrez éditer le noms de vos trajets.
+- **Créer jusqu'à 5 trajets** : vous pourrez créer jusqu'à 5 trajets.
+- **exporter/importer json** : vous pourrez exporter votre fichier de configuration des trajets, afin de retrouver vos trajets d'un appareil à l'autre
+
 ## Stack Technologique
 
 - **Frontend** : React 18
