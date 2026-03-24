@@ -15,7 +15,7 @@ const FALLBACK_STOPS = {
     'neron': ['SEM:NERON::45.21782,5.69334', 'N\u00e9ron'],
 };
 
-export default function TestHome() {
+export default function FastResearch() {
     const [stopsMap, setStopsMap] = useState(FALLBACK_STOPS);
     const [dep, setDep] = useState('');
     const [arr, setArr] = useState('');
@@ -30,6 +30,9 @@ export default function TestHome() {
     const [inputsOpen, setInputsOpen] = useState(true);
     const [menuOpen, setMenuOpen] = useState(false);
 
+    // État pour mettre à jour l'heure locale toutes les secondes (pour "dans x min")
+    const [currentTime, setCurrentTime] = useState(new Date());
+
     useEffect(() => {
         // chargement initiale des arrets de toutes les lignes sem
         const fetchStops = async () => {
@@ -40,7 +43,6 @@ export default function TestHome() {
                     .map((route) => route.id)
                     .filter((id) => id?.startsWith('SEM:'))
                     .map((id) => id.replace('SEM:', ''))
-                    .slice(0, 20);
 
                 const newMap = { ...FALLBACK_STOPS };
 
@@ -99,6 +101,14 @@ export default function TestHome() {
     useEffect(() => {
         setArrSuggestions(suggestionsFor(arr));
     }, [arr, stopsMap]);
+
+    // Mise à jour de l'heure locale toutes les secondes pour "dans x min"
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setCurrentTime(new Date());
+        }, 1000);
+        return () => clearInterval(interval);
+    }, []);
 
     const search = async (offset = 0) => {
         setError('');
@@ -195,6 +205,10 @@ export default function TestHome() {
         await search(timeOffset - 1);
     };
 
+    const handleRefresh = async () => {
+        await search(timeOffset);
+    };
+
     const [afterModeOpen, setAfterModeOpen] = useState(false);
 
     const reset = () => {
@@ -226,6 +240,34 @@ export default function TestHome() {
     const afterLabel = `après ${afterDate.toTimeString().slice(0, 5)}`;
     const beforeLabel = `avant ${beforeDate.toTimeString().slice(0, 5)}`;
 
+    const formatTimeUntil = (timeStr, now = new Date()) => {
+        if (!timeStr) return '';
+        const match = timeStr.match(/^(\d{1,2}):(\d{2})$/);
+        if (!match) return '';
+        const hours = Number(match[1]);
+        const mins = Number(match[2]);
+        if (Number.isNaN(hours) || Number.isNaN(mins)) return '';
+
+        const target = new Date(now);
+        target.setHours(hours, mins, 0, 0);
+        if (target < now) {
+            target.setDate(target.getDate() + 1);
+        }
+
+        const diffMs = target - now;
+        const diffMinutes = Math.max(0, Math.round(diffMs / 60000));
+        const diffHours = Math.floor(diffMinutes / 60);
+        const diffMins = diffMinutes % 60;
+
+        if (diffHours > 0 && diffMins > 0) {
+            return `dans ${diffHours}h ${diffMins}min`;
+        }
+        if (diffHours > 0) {
+            return `dans ${diffHours}h`;
+        }
+        return `dans ${diffMins}min`;
+    };
+
     return (
         <>
             <Navbar title="Recherche rapide" menuOpen={menuOpen} setMenuOpen={setMenuOpen} onMenuOpen={() => setInputsOpen(false)} showHamburger={true} />
@@ -236,10 +278,20 @@ export default function TestHome() {
                     {error && <div className="mt-3 p-2 bg-red-100 text-red-700 rounded">{error}</div>}
 
                     {results.length > 0 && (
-                        <div className="mb-2 text-left">
+                        <div className="mb-2 text-left flex items-center gap-2">
                             <span className="text-sm text-gray-600">
                                 Résultats pour {new Date(searchBaseDate.getTime() + timeOffset * 60 * 60 * 1000).toTimeString().slice(0, 5)}
                             </span>
+                            <button
+                                onClick={handleRefresh}
+                                disabled={loading}
+                                className="ml-auto text-gray-600 hover:text-gray-900 transition-colors"
+                                title="Rafraîchir les résultats"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                </svg>
+                            </button>
                         </div>
                     )}
 
@@ -272,8 +324,14 @@ export default function TestHome() {
                                         <tr key={idx} className="even:bg-gray-50">
                                             <td className="p-2 border">{item.line}</td>
                                             <td className="p-2 border hidden sm:table-cell">{item.direction}</td>
-                                            <td className="p-2 border">{item.dep}</td>
-                                            <td className="p-2 border">{item.arr}</td>
+                                            <td className="p-2 border">
+                                                <div>{item.dep}</div>
+                                                <div className="text-xs text-gray-500 mt-1">{formatTimeUntil(item.dep, currentTime)}</div>
+                                            </td>
+                                            <td className="p-2 border">
+                                                <div>{item.arr}</div>
+                                                <div className="text-xs text-gray-500 mt-1">{item.dur}</div>
+                                            </td>
                                             <td className="p-2 border hidden sm:table-cell">{item.dur}</td>
                                             <td className="p-2 border hidden sm:table-cell">{item.direct ? 'DIRECT' : 'CORRESPONDANCE'}</td>
                                         </tr>

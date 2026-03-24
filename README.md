@@ -3,8 +3,16 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.2.2-38B2AC.svg)](https://tailwindcss.com/)
 
 # TAG Express - Application Web
+### Version alpha 1.0
+
+## Application disponible [sur le site de Mréso](http://www.reso-m.fr/mreso-express)   jusqu'au 27 mars !
+
+**Release bugless prévue le 25/03/2026**
 
 > Une application web moderne pour gérer et rechercher des trajets de transport utilisant le système de transit TAG (Transports de l'Agglomération Grenobloise).
+> Cette app est toujours en développement, certains bugs peuvent donc apparaître. Merci de les report dans ```issues``` lorsque cela arrive.
+
+> ⚠️ : les itinéraires peuvent être imprécis en fonction de la ligne. (ex: une ligne de tram aura des itinéraires plus précis qu'une ligne de bus). Cela est dû au traffic et aux imprévus de la route, qui peuvent donc décaler les horaires théoriques.
 
 ## Captures d'écran de /mes-trajets/
 
@@ -19,6 +27,16 @@
 - **Design Responsive** : Fonctionne parfaitement sur les appareils mobiles et de bureau
 - **Données en Temps Réel** : Intégration avec l'API TAG pour des informations actualisées
 - **Recherche Rapide** : Fonctionnalité de recherche rapide pour des requêtes ponctuelles
+
+## Fonctionnalités à venir prochainement
+
+- **Editer nom trajets** : vous pourrez éditer le noms de vos trajets.
+- **Support des correspondances** : vous pourrez mettre 2 arrêts pas de la même ligne dans la recherche rapide uniquement.
+- **Créer jusqu'à 5 trajets** : vous pourrez créer jusqu'à 5 trajets.
+- **Exporter/importer json** : vous pourrez exporter votre fichier de configuration des trajets, afin de retrouver vos trajets d'un appareil à l'autre
+- **Arrêts favoris** :  dans la barre de recherche rapide, vous pourrez ajouter/enlevez des arrets favoris.
+- **Onglet de paramètres** : Vous pourrez changer le thème de l'app, changer les paramètres de recherche d'itinéraires...
+- **Bouton refresh** : bouton refresh sur les-pages mes trajets et recherche rapide.
 
 ## Stack Technologique
 
@@ -65,7 +83,7 @@ npm run build
 src/
 ├── components/
 │   ├── mestrajets.jsx      # Composant principal de gestion des trajets
-│   ├── testhome.jsx        # Page de recherche rapide
+│   ├── fast-research.jsx   # Page de recherche rapide
 │   └── navbar.jsx          # Barre de navigation
 ├── App.jsx                 # Composant principal
 ├── App.css                 # Styles globaux

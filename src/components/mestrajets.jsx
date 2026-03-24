@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Navbar from './navbar.jsx';
 
@@ -23,6 +23,7 @@ export default function MesTrajets() {
     const [searchParams, setSearchParams] = useSearchParams();
     const [stopsMap, setStopsMap] = useState(FALLBACK_STOPS);
     const [stopsLoaded, setStopsLoaded] = useState(false);
+    const [loadedFromStorage, setLoadedFromStorage] = useState(false);
     const [currentTrajet, setCurrentTrajet] = useState('T1');
     const [trajets, setTrajets] = useState({
         T1: { ...DEFAULT_TRAJET },
@@ -32,13 +33,6 @@ export default function MesTrajets() {
 
     // Permet d'éviter d'exécuter le chargement deux fois en mode strict
     const hasLoadedRef = useRef(false);
-
-    // Cache des résultats de recherche par trajet
-    const [searchCache, setSearchCache] = useState({
-        T1: { results: [], timeOffset: 0, searchBaseDate: new Date(), error: '' },
-        T2: { results: [], timeOffset: 0, searchBaseDate: new Date(), error: '' },
-        T3: { results: [], timeOffset: 0, searchBaseDate: new Date(), error: '' }
-    });
 
     // États pour la recherche active
     const [dep, setDep] = useState('');
@@ -51,9 +45,25 @@ export default function MesTrajets() {
     const [searchBaseDate, setSearchBaseDate] = useState(new Date());
     const [depSuggestions, setDepSuggestions] = useState([]);
     const [arrSuggestions, setArrSuggestions] = useState([]);
-    const [inputsOpen, setInputsOpen] = useState(true);
+    const [inputsOpen, setInputsOpen] = useState(false);
     const [saveStatus, setSaveStatus] = useState(''); // '', 'saved', 'saved-idle'
     const [menuOpen, setMenuOpen] = useState(false);
+
+    // État pour mettre à jour l'heure locale toutes les secondes (pour "dans x min")
+    const [currentTime, setCurrentTime] = useState(new Date());
+
+    // Désactiver le débogage console des recherches (false = off)
+    const DEBUG = false;
+
+    // Stockage des résultats pour chaque trajet (caching en mémoire, reset au refresh / sortie de page)
+    const [trajetResultsMap, setTrajetResultsMap] = useState({
+        T1: { results: [], error: '', timeOffset: 0, searchBaseDate: new Date() },
+        T2: { results: [], error: '', timeOffset: 0, searchBaseDate: new Date() },
+        T3: { results: [], error: '', timeOffset: 0, searchBaseDate: new Date() }
+    });
+
+    // Cache en mémoire volatile (non persistant entre refresh)
+    const trajetsCacheRef = useRef({});
 
     // Réinitialiser le statut de sauvegarde quand l'utilisateur modifie la sélection
     useEffect(() => {
@@ -118,9 +128,8 @@ export default function MesTrajets() {
 
         // Charger depuis localStorage
         const savedTrajets = localStorage.getItem('tag-express-trajets');
-        const savedCache = localStorage.getItem('tag-express-cache');
 
-        console.log('Chargement localStorage:', { savedTrajets, savedCache });
+        console.log('Chargement localStorage:', { savedTrajets });
 
         let activeKey = 'T1';
         const savedActive = localStorage.getItem('tag-express-active-trajet');
@@ -154,44 +163,39 @@ export default function MesTrajets() {
             }
         }
 
-        if (savedCache) {
-            try {
-                const parsed = JSON.parse(savedCache);
-                // Restaurer les dates depuis les strings JSON
-                const restoredCache = {};
-                Object.keys(parsed).forEach(key => {
-                    restoredCache[key] = {
-                        ...parsed[key],
-                        searchBaseDate: parsed[key].searchBaseDate ? new Date(parsed[key].searchBaseDate) : new Date()
-                    };
-                });
-                console.log('Cache chargé:', restoredCache);
-                setSearchCache(restoredCache);
-
-                if (restoredCache[activeKey]) {
-                    setResults(restoredCache[activeKey].results || []);
-                    setTimeOffset(restoredCache[activeKey].timeOffset || 0);
-                    setSearchBaseDate(restoredCache[activeKey].searchBaseDate || new Date());
-                    setError(restoredCache[activeKey].error || '');
-                }
-            } catch (e) {
-                console.error('Erreur chargement localStorage cache:', e);
-            }
-        }
-
+        setLoadedFromStorage(true);
         localStorage.setItem('tag-express-active-trajet', activeKey);
     }, []);
 
     // Pre-search for all configured trajets once stops and trajets are loaded
     useEffect(() => {
-        if (stopsLoaded && hasLoadedRef.current) {
+        if (stopsLoaded && loadedFromStorage) {
+            console.log('🔄 Pré-chargement de tous les trajets...');
             ['T1', 'T2', 'T3'].forEach(t => {
-                if (trajets[t] && trajets[t].depName && trajets[t].arrName) {
-                    search(0, { dep: trajets[t].depName, arr: trajets[t].arrName, line: trajets[t].line, trajetKey: t, save: false });
+                const trajet = trajets[t];
+                const hasConfig = trajet && trajet.depName && trajet.arrName;
+                console.log(`  T${t.slice(1)}: ${hasConfig ? '✓ Configuré - Recherche...' : '✗ Pas configuré'}`);
+                if (hasConfig) {
+                    search(0, { dep: trajet.depName, arr: trajet.arrName, line: trajet.line, trajetKey: t, save: false });
                 }
             });
         }
-    }, [stopsLoaded, trajets]);
+    }, [stopsLoaded, loadedFromStorage, trajets]);
+
+    // Vider le cache en mémoire lorsque l'utilisateur quitte la page / dé-monte le composant
+    useEffect(() => {
+        return () => {
+            trajetsCacheRef.current = {};
+        };
+    }, []);
+
+    // Mise à jour de l'heure locale toutes les secondes pour "dans x min"
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setCurrentTime(new Date());
+        }, 1000);
+        return () => clearInterval(interval);
+    }, []);
 
     // Charger depuis URL si paramètres présents
     useEffect(() => {
@@ -221,7 +225,15 @@ export default function MesTrajets() {
         });
 
         if (hasUrlParams) {
-            setTrajets(prev => ({ ...prev, ...urlTrajets }));
+            setTrajets(prev => {
+                const newTrajets = { ...prev };
+                Object.keys(urlTrajets).forEach(t => {
+                    if (!prev[t] || !prev[t].line) { // Only set from URL if not already configured in localStorage
+                        newTrajets[t] = urlTrajets[t];
+                    }
+                });
+                return newTrajets;
+            });
         }
     }, [searchParams, stopsMap]);
 
@@ -229,8 +241,6 @@ export default function MesTrajets() {
     useEffect(() => {
         localStorage.setItem('tag-express-trajets', JSON.stringify(trajets));
     }, [trajets]);
-
-    // (effect supprimé) on gère le trajet actif dans le premier useEffect de chargement
 
     const findStop = (query) => {
         if (!query || !query.trim()) return null;
@@ -291,16 +301,21 @@ export default function MesTrajets() {
     // Charger un trajet dans le formulaire de recherche
     const loadTrajet = (trajetKey) => {
         const trajet = trajets[trajetKey];
-        const cache = searchCache[trajetKey];
-        const isCacheValid = cache?.searchBaseDate && new Date().toDateString() === cache.searchBaseDate.toDateString();
+        const trajetData = trajetResultsMap[trajetKey] || trajetsCacheRef.current[trajetKey] || {};
+        console.log(`📂 Chargement trajet ${trajetKey}:`, {
+            trajet,
+            resultCount: trajetData.results?.length || 0,
+            error: trajetData.error || 'Aucune erreur',
+            source: trajetResultsMap[trajetKey] ? 'state' : 'cache'
+        });
         setCurrentTrajet(trajetKey);
         setDep(trajet.depName || '');
         setArr(trajet.arrName || '');
         setLine(trajet.line || '');
-        setResults(isCacheValid ? cache?.results || [] : []);
-        setError(isCacheValid ? cache?.error || '' : '');
-        setTimeOffset(isCacheValid ? cache?.timeOffset || 0 : 0);
-        setSearchBaseDate(isCacheValid ? cache?.searchBaseDate || new Date() : new Date());
+        setResults(trajetData.results || []);
+        setError(trajetData.error || '');
+        setTimeOffset(trajetData.timeOffset || 0);
+        setSearchBaseDate(trajetData.searchBaseDate || new Date());
         setInputsOpen(false);
 
         // Sauvegarder le trajet actif
@@ -357,8 +372,15 @@ export default function MesTrajets() {
         }
 
         const baseTime = searchBaseDate;
-        const time = new Date(baseTime.getTime() + offset * 60 * 60 * 1000);
+        const now = new Date();
+        let adjustedBaseTime = baseTime;
+        if (baseTime < now) {
+            adjustedBaseTime = new Date(now.getTime() + offset * 60 * 60 * 1000);
+        } else {
+            adjustedBaseTime = new Date(baseTime.getTime() + offset * 60 * 60 * 1000);
+        }
 
+        const time = adjustedBaseTime;
         const urlParams = new URLSearchParams({
             fromPlace: from[0],
             toPlace: to[0],
@@ -377,12 +399,26 @@ export default function MesTrajets() {
             const json = await res.json();
             const itineraries = json.plan?.itineraries || [];
 
+            if (DEBUG) {
+                console.log(`\n🔍 === RECHERCHE ${trajetKey} ===`);
+                console.log(`📍 De: ${depValue} → ${arrValue}`);
+                console.log(`🚌 Ligne filtrée: ${lineValue || 'Toutes'}`);
+                console.log(`⏰ Horaire: ${time.toTimeString().substr(0, 5)}`);
+                console.log(`📊 Itinéraires reçus: ${itineraries.length}`);
+            }
+
             const filtered = itineraries
                 .filter((it) => it.duration / 60 <= 35)
-                .map((it) => {
+                .map((it, idx) => {
                     const depTime = new Date(it.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
                     const arrTime = new Date(it.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-                    const legs = it.legs.filter((l) => l.mode !== 'WALK');
+                    const duration = Math.round(it.duration / 60);
+                    const legs = it.legs.filter((l) => l.mode !== 'WALK'); // Legs de transport uniquement
+
+                    if (DEBUG) {
+                        console.log(`\n  📋 Itinéraire ${idx + 1}: ${depTime}→${arrTime} (${duration}min)`);
+                        console.log(`     Transport legs: ${legs.length}`);
+                    }
 
                     const lineKeys = legs.map((leg) => {
                         const routeShortName = (leg.routeShortName || '').replace('SEM:', '').toUpperCase();
@@ -391,16 +427,19 @@ export default function MesTrajets() {
                         return routeShortName || route || routeId || '?';
                     });
 
+                    if (DEBUG && legs.length === 0) {
+                        console.log('  ❓ AUCUN TRANSPORT trouvé');
+                    }
+
                     return {
                         dep: depTime,
                         arr: arrTime,
                         depName: from[1],
                         arrName: to[1],
-                        dur: `${Math.round(it.duration / 60)} min`,
-                        direct: legs.length <= 1,
+                        dur: `${duration} min`,
                         direction: legs[0]?.headsign || legs[0]?.to?.name || '?',
                         line: lineValue ? lineValue.toUpperCase() : lineKeys[0] || '?',
-                        lineKeys,
+                        lineKeys
                     };
                 })
                 .filter((item) => {
@@ -410,9 +449,16 @@ export default function MesTrajets() {
                     return item.lineKeys.some((lk) => lk === target || lk === targetPattern || lk.startsWith(target));
                 });
 
+            if (DEBUG) {
+                console.log(`✅ Itinéraires filtrés: ${filtered.length} (max 35min)`);
+                if (filtered.length === 0) {
+                    console.log('⚠️ Aucun itinéraire trouvé');
+                }
+            }
+
             if (filtered.length === 0) {
                 if (shouldUpdateGlobal) {
-                    setError('⚠️ Aucun itinéraire trouvé pour ce créneau.');
+                    setError('Aucun itinéraire trouvé pour ce créneau.');
                 }
             } else {
                 if (shouldUpdateGlobal) {
@@ -420,23 +466,25 @@ export default function MesTrajets() {
                 }
             }
 
+            // Sauvegarder les résultats pour ce trajet (state + cache mémoire)
+            const trajetData = {
+                results: filtered,
+                error: filtered.length === 0 ? 'Aucun itinéraire trouvé pour ce créneau.' : '',
+                timeOffset: offset,
+                searchBaseDate: adjustedBaseTime
+            };
+            trajetsCacheRef.current[trajetKey] = trajetData;
+            setTrajetResultsMap(prev => ({
+                ...prev,
+                [trajetKey]: trajetData
+            }));
+
             if (shouldUpdateGlobal) {
                 setResults(filtered);
                 setTimeOffset(offset);
                 setSearchBaseDate(baseTime);
                 setInputsOpen(false);
             }
-
-            // Sauvegarder dans le cache
-            setSearchCache(prev => ({
-                ...prev,
-                [trajetKey]: {
-                    results: filtered,
-                    timeOffset: offset,
-                    searchBaseDate: baseTime,
-                    error: filtered.length === 0 ? '⚠️ Aucun itinéraire trouvé pour ce créneau.' : ''
-                }
-            }));
         } catch (err) {
             const errorMsg = 'Erreur réseau / API : ' + (err.message || err);
             if (shouldUpdateGlobal) {
@@ -444,15 +492,17 @@ export default function MesTrajets() {
                 setResults([]);
             }
 
-            // Sauvegarder erreur dans le cache
-            setSearchCache(prev => ({
+            // Sauvegarder l'erreur pour ce trajet (state + cache mémoire)
+            const trajetErrorData = {
+                results: [],
+                error: errorMsg,
+                timeOffset: 0,
+                searchBaseDate: adjustedBaseTime
+            };
+            trajetsCacheRef.current[trajetKey] = trajetErrorData;
+            setTrajetResultsMap(prev => ({
                 ...prev,
-                [trajetKey]: {
-                    results: [],
-                    timeOffset: 0,
-                    searchBaseDate: new Date(),
-                    error: errorMsg
-                }
+                [trajetKey]: trajetErrorData
             }));
         } finally {
             if (shouldUpdateGlobal) {
@@ -469,6 +519,10 @@ export default function MesTrajets() {
         await search(timeOffset - 1);
     };
 
+    const handleRefresh = async () => {
+        await search(timeOffset, { trajetKey: currentTrajet, save: false });
+    };
+
     const reset = () => {
         setDep('');
         setArr('');
@@ -478,17 +532,6 @@ export default function MesTrajets() {
         setError('');
         setInputsOpen(true);
         setMenuOpen(false);
-
-        // Effacer le cache du trajet courant
-        setSearchCache(prev => ({
-            ...prev,
-            [currentTrajet]: {
-                results: [],
-                timeOffset: 0,
-                searchBaseDate: new Date(),
-                error: ''
-            }
-        }));
     };
 
     const selectSuggestion = (value, target) => {
@@ -502,6 +545,34 @@ export default function MesTrajets() {
     };
 
     const computedSuggestions = useMemo(() => depSuggestions, [depSuggestions]);
+
+    const formatTimeUntil = (timeStr, now = new Date()) => {
+        if (!timeStr) return '';
+        const match = timeStr.match(/^(\d{1,2}):(\d{2})$/);
+        if (!match) return '';
+        const hours = Number(match[1]);
+        const mins = Number(match[2]);
+        if (Number.isNaN(hours) || Number.isNaN(mins)) return '';
+
+        const target = new Date(now);
+        target.setHours(hours, mins, 0, 0);
+        if (target < now) {
+            target.setDate(target.getDate() + 1);
+        }
+
+        const diffMs = target - now;
+        const diffMinutes = Math.max(0, Math.round(diffMs / 60000));
+        const diffHours = Math.floor(diffMinutes / 60);
+        const diffMins = diffMinutes % 60;
+
+        if (diffHours > 0 && diffMins > 0) {
+            return `dans ${diffHours}h${diffMins}`;
+        }
+        if (diffHours > 0) {
+            return `dans ${diffHours} h`;
+        }
+        return `dans ${diffMins} min`;
+    };
 
     const origin = searchBaseDate || new Date();
     const afterDate = new Date(origin.getTime() + (timeOffset + 1) * 60 * 60 * 1000);
@@ -550,16 +621,30 @@ export default function MesTrajets() {
 
                     {results.length > 0 && (
                         <div className="mb-3 p-3 bg-blue-50 border border-blue-200 rounded text-sm text-center">
-                            <span className="text-lg font-semibold text-black">{dep} → {arr}</span>
+                            <span className="text-lg font-semibold text-black flex items-center justify-center gap-1">
+                                {dep}
+                                →
+                                {arr}
+                            </span>
                             <div className="text-xs text-gray-600 mt-1">{results[0].direction}</div>
                         </div>
                     )}
 
                     {results.length > 0 && (
-                        <div className="mt-4 mb-2 text-left">
+                        <div className="mt-4 mb-2 text-left flex items-center gap-2">
                             <span className="text-sm text-gray-600">
                                 Résultats pour {new Date(searchBaseDate.getTime() + timeOffset * 60 * 60 * 1000).toTimeString().slice(0, 5)}
                             </span>
+                            <button
+                                onClick={handleRefresh}
+                                disabled={loading}
+                                className="ml-auto text-gray-600 hover:text-gray-900 transition-colors"
+                                title="Rafraîchir les résultats"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                </svg>
+                            </button>
                         </div>
                     )}
 
@@ -578,27 +663,30 @@ export default function MesTrajets() {
                                         <div className="text-xs font-normal text-gray-600">{arr || '-'}</div>
                                     </th>
                                     <th className="p-2 border hidden sm:table-cell">Durée</th>
-                                    <th className="p-2 border hidden sm:table-cell">Type</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {results.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="p-3 text-center text-gray-500">Aucun résultat. Lancez la recherche.</td>
+                                        <td colSpan={5} className="p-3 text-center text-gray-500">Aucun résultat. Lancez la recherche.</td>
                                     </tr>
                                 ) : (
                                     results.map((item, idx) => (
-                                        <tr key={idx} className="even:bg-gray-50">
-                                            <td className="p-2 border">{item.line}</td>
-                                            <td className="p-2 border hidden sm:table-cell">{item.direction}</td>
-                                            <td className="p-2 border">{item.dep}</td>
-                                            <td className="p-2 border">
-                                                <div>{item.arr}</div>
-                                                <div className="text-xs text-gray-500 mt-1">{item.dur}</div>
-                                            </td>
-                                            <td className="p-2 border hidden sm:table-cell">{item.dur}</td>
-                                            <td className="p-2 border hidden sm:table-cell">{item.direct ? 'DIRECT' : 'CORRESPONDANCE'}</td>
-                                        </tr>
+                                        <React.Fragment key={idx}>
+                                            <tr className="even:bg-gray-50">
+                                                <td className="p-2 border">{item.line}</td>
+                                                <td className="p-2 border hidden sm:table-cell">{item.direction}</td>
+                                                <td className="p-2 border">
+                                                    <div>{item.dep}</div>
+                                                    <div className="text-xs text-gray-500 mt-1">{formatTimeUntil(item.dep, currentTime)}</div>
+                                                </td>
+                                                <td className="p-2 border">
+                                                    <div>{item.arr}</div>
+                                                    <div className="text-xs text-gray-500 mt-1">{item.dur}</div>
+                                                </td>
+                                                <td className="p-2 border hidden sm:table-cell">{item.dur}</td>
+                                            </tr>
+                                        </React.Fragment>
                                     ))
                                 )}
                             </tbody>
