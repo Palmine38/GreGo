@@ -4,7 +4,7 @@
 
 # TAG Express - Application Web [![TAGexpress](https://img.shields.io/badge/TAG_express-1.1-brightgreen)](https://web-tag-express.vercel.app/)
 
-**Release bugless prévue bientôt**
+**Release 2.0 prévue bientôt : refonte de l'interface, pour une app plus pratique et moderne**
 
 > Une application web moderne faite pour Mobile seulement à l'heure actuelle pour gérer et rechercher des trajets de transport utilisant le système de transit TAG (Transports de l'Agglomération Grenobloise).
 > Cette app est toujours en développement, certains bugs peuvent donc apparaître. Merci de les report dans ```issues``` lorsque cela arrive.
