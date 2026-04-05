@@ -141,6 +141,10 @@ L'application utilise l'API ouverte TAG Mobilités :
 
 Ce projet est open source et disponible sous la licence MIT.
 
+## Crédits
+
+Ce projet ne serait pas possible sans les APIs opendata fournies par MRESO.
+
 ## Auteur
 
 Créé par [Palmine38](https://github.com/Palmine38)
