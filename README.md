@@ -21,7 +21,6 @@
 - **Recherche de Trajets** : Recherchez des trajets de transport avec filtres par départ, arrivée et numéro de ligne
 - **Stockage Persistant** : Tous les trajets sont automatiquement sauvegardés dans le localStorage du navigateur
 - **Navigation Temporelle** : Naviguez entre différents créneaux horaires pour le même trajet
-- **Design Responsive** : Fonctionne parfaitement sur les appareils mobiles et de bureau
 - **Données en Temps Réel** : Intégration avec l'API TAG pour des informations actualisées
 - **Recherche Rapide** : Fonctionnalité de recherche rapide pour des requêtes ponctuelles
 
@@ -32,10 +31,8 @@
 - **Créer jusqu'à 5 trajets** : vous pourrez créer jusqu'à 5 trajets.
 - **Exporter/importer json** : vous pourrez exporter votre fichier de configuration des trajets, afin de retrouver vos trajets d'un appareil à l'autre
 - **Arrêts favoris** :  dans la barre de recherche rapide, vous pourrez ajouter/enlevez des arrets favoris.
-- **Onglet de paramètres** : Vous pourrez changer le thème de l'app, changer les paramètres de recherche d'itinéraires...
-- **Bouton refresh** : bouton refresh sur les-pages mes trajets et recherche rapide.
 
-## Stack Technologique
+## Stack Technologique (pour devs)
 
 - **Frontend** : React 18
 - **Outil de Build** : Vite
