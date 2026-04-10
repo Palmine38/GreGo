@@ -4,21 +4,25 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --main-font: "Montserrat", sans-serif;
+}
+
 body {
   background: white;
-  font-family: "Montserrat", sans-serif;
+  font-family: var(--main-font);
 }
 
 .mst-regular {
-  font-family: "Montserrat", sans-serif;
+  font-family: var(--main-font);
   font-optical-sizing: auto;
   font-weight: 400;
   font-style: normal;
 }
 
 .mst-bold {
-  font-family: "Montserrat", sans-serif;
+  font-family: var(--main-font);
   font-optical-sizing: auto;
-  font-weight: 670;
+  font-weight: 700;
   font-style: normal;
 }

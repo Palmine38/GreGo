@@ -2,14 +2,11 @@
 [![Vite](https://img.shields.io/badge/Vite-8.0.1-646CFF.svg)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.2.2-38B2AC.svg)](https://tailwindcss.com/)
 
-# TAG Express - Application Web
-### Version alpha 1.0
+# TAG Express - Application Web [![TAGexpress](https://img.shields.io/badge/TAG_express-1.1-brightgreen)](https://web-tag-express.vercel.app/)
 
-## Application disponible [sur le site de Mréso](http://www.reso-m.fr/mreso-express)   jusqu'au 27 mars !
+**Release 2.0 prévue bientôt : refonte de l'interface, pour une app plus pratique et moderne**
 
-**Release bugless prévue le 25/03/2026**
-
-> Une application web moderne pour gérer et rechercher des trajets de transport utilisant le système de transit TAG (Transports de l'Agglomération Grenobloise).
+> Une application web moderne faite pour Mobile seulement à l'heure actuelle pour gérer et rechercher des trajets de transport utilisant le système de transit TAG (Transports de l'Agglomération Grenobloise).
 > Cette app est toujours en développement, certains bugs peuvent donc apparaître. Merci de les report dans ```issues``` lorsque cela arrive.
 
 > ⚠️ : les itinéraires peuvent être imprécis en fonction de la ligne. (ex: une ligne de tram aura des itinéraires plus précis qu'une ligne de bus). Cela est dû au traffic et aux imprévus de la route, qui peuvent donc décaler les horaires théoriques.
@@ -143,6 +140,10 @@ L'application utilise l'API ouverte TAG Mobilités :
 ## Licence
 
 Ce projet est open source et disponible sous la licence MIT.
+
+## Crédits
+
+Ce projet ne serait pas possible sans les APIs opendata fournies par MRESO.
 
 ## Auteur
 

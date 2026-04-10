@@ -271,8 +271,8 @@ export default function FastResearch() {
     return (
         <>
             <Navbar title="Recherche rapide" menuOpen={menuOpen} setMenuOpen={setMenuOpen} onMenuOpen={() => setInputsOpen(false)} showHamburger={true} />
-            <div className="min-h-screen relative bg-slate-50 pb-24">
-                <div className="m-4 p-4 rounded-lg border border-gray-300 bg-white shadow-lg">
+            <div className="min-h-screen relative bg-[#EFEFEF] pb-24">
+                <div className="m-4 p-4 rounded-lg border border-gray-300 bg-white shadow-xl">
                     <h1 className="text-2xl font-bold mb-3">Recherche rapide</h1>
 
                     {error && <div className="mt-3 p-2 bg-red-100 text-red-700 rounded">{error}</div>}

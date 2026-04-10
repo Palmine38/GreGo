@@ -408,7 +408,6 @@ export default function MesTrajetsTest() {
         const arrValue = params.arr !== undefined ? params.arr : arr;
         const lineValue = params.line !== undefined ? params.line : line;
         const trajetKey = params.trajetKey || currentTrajet;
-        const shouldSave = params.save !== false;
         const shouldUpdateGlobal = !params.trajetKey || params.trajetKey === currentTrajet;
 
         if (shouldUpdateGlobal) {
@@ -435,20 +434,6 @@ export default function MesTrajetsTest() {
                 setLoading(false);
             }
             return;
-        }
-
-        if (shouldSave) {
-            const newTrajets = {
-                ...trajets,
-                [trajetKey]: {
-                    line: lineValue.toUpperCase(),
-                    depId: from[0].split('::')[0].replace('SEM:', ''),
-                    arrId: to[0].split('::')[0].replace('SEM:', ''),
-                    depName: from[1],
-                    arrName: to[1]
-                }
-            };
-            setTrajets(newTrajets);
         }
 
         const baseTime = searchBaseDate || new Date();
