@@ -49,6 +49,7 @@ export default function MesTrajetsTest() {
     const [inputsOpen, setInputsOpen] = useState(false);
     const [saveStatus, setSaveStatus] = useState('');
     const [menuOpen, setMenuOpen] = useState(false);
+    const [settingsOpen, setSettingsOpen] = useState(false);
     const [selectedJourney, setSelectedJourney] = useState(null);
     const [journeyDetailsOpen, setJourneyDetailsOpen] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
@@ -687,9 +688,28 @@ export default function MesTrajetsTest() {
     const selectedWalkLeg = selectedJourney?.allLegs?.find((l) => l.mode === 'WALK');
     const selectedConnectionDuration = selectedWalkLeg ? `${Math.max(1, Math.round(selectedWalkLeg.duration / 60))} min` : '1 min';
 
+    // Fonctions pour gérer l'exclusivité des menus
+    const openMenu = () => {
+        setInputsOpen(false);
+        setSettingsOpen(false);
+        setMenuOpen(true);
+    };
+
+    const openSettings = () => {
+        setMenuOpen(false);
+        setInputsOpen(false);
+        setSettingsOpen(true);
+    };
+
+    const openInputs = () => {
+        setMenuOpen(false);
+        setSettingsOpen(false);
+        setInputsOpen(true);
+    };
+
     return (
         <>
-            <Navbar title="Mes trajets (Test)" menuOpen={menuOpen} setMenuOpen={setMenuOpen} onMenuOpen={() => setInputsOpen(false)} />
+            <Navbar title="Mes trajets (Test)" menuOpen={menuOpen} setMenuOpen={setMenuOpen} onMenuOpen={openMenu} settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen} onSettingsOpen={openSettings} />
             <div className="min-h-screen relative bg-[#F8FAFC] pb-24">
                 {/* Navbar des trajets */}
                 <div className="bg-white border-b border-gray-200 p-4">
@@ -858,7 +878,7 @@ export default function MesTrajetsTest() {
                     <div className="fixed bottom-0 left-0 right-0 z-50 bg-gray-100 border-t border-gray-300 p-2 shadow-md">
                         <button
                             className="w-full py-3 bg-blue-600 text-white rounded-t-lg"
-                            onClick={() => { setInputsOpen(true); setMenuOpen(false); }}
+                            onClick={openInputs}
                         >
                             ^ Ouvrir la recherche
                         </button>
@@ -869,120 +889,16 @@ export default function MesTrajetsTest() {
                     <>
                         <div className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${journeyDetailsOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={closeJourneyDetails} />
                         <div className={`${journeyDetailsOpen ? 'translate-y-0' : 'translate-y-full'} fixed inset-x-0 bottom-0 z-50 max-h-[90vh] overflow-y-auto rounded-t-3xl border border-slate-200 bg-white p-4 shadow-2xl transition-transform duration-300`}>
-                            <div className="mx-auto mb-4 h-1.5 w-16 rounded-full bg-slate-300" />
-                            <div className="flex items-center justify-between gap-4">
-                                <div>
-                                    <p className="text-sm uppercase tracking-[0.18em] text-slate-500">Détails du trajet</p>
-                                    <h2 className="text-xl font-bold text-slate-900">{selectedJourney.depName} → {selectedJourney.arrName}</h2>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={closeJourneyDetails}
-                                    className="rounded-full border border-slate-200 bg-slate-100 px-3 py-2 text-sm text-slate-700 hover:bg-slate-200"
-                                >
-                                    ×
-                                </button>
-                            </div>
+                            <button
+                                type="button"
+                                onClick={closeJourneyDetails}
+                                className="text-black font-semibold text-lg absolute top-4 right-4 transition-opacity hover:opacity-70"
+                            >
+                                ×
+                            </button>
 
-                            <div className="mt-4 flex items-center gap-4 rounded-3xl border border-slate-200 bg-white p-4">
-                                {/* Arrivée - à gauche */}
-                                <div className="flex-1 text-left">
-                                    <p className="text-xl font-bold text-slate-900">{selectedJourney.arr}</p>
-                                    <p className="text-sm text-slate-500">{formatTimeUntil(selectedJourney.dep, currentTime)}</p>
-                                </div>
-
-                                {/* Séparateur */}
-                                <div className="w-px h-12 bg-slate-300"></div>
-
-                                {/* Départ - à droite */}
-                                <div className="flex-1 text-right pr-3">
-                                    <p className="text-xl font-bold text-slate-900">{selectedJourney.dep}</p>
-                                    <p className="text-sm text-slate-500">{selectedJourney.dur}</p>
-                                </div>
-                            </div>
-
-                            <div className="mt-5 rounded-[2rem] bg-white p-6 shadow-sm">
-                                <div className="relative">
-                                    {/* Ligne verticale partant de la première icone jusqu'à la prochaine étape */}
-                                    {selectedJourney.legs?.length > 1 && (
-                                        <div className="absolute w-1 flex-shrink-0" style={{
-                                            left: '19px',
-                                            top: '20px',
-                                            height: 'calc(100% - 40px)',
-                                            backgroundColor: lineColors[selectedFirstLine] || '#8B5CF6'
-                                        }} />
-                                    )}
-
-                                    {/* Départ */}
-                                    <div className="relative mb-8 flex gap-4">
-                                        <div className="flex flex-col items-center justify-center w-10">
-                                            {selectedFirstLine && lineIcons[selectedFirstLine] ? (
-                                                <img
-                                                    src={lineIcons[selectedFirstLine]}
-                                                    alt={selectedFirstLine}
-                                                    className="h-10 w-10 object-contain flex-shrink-0"
-                                                />
-                                            ) : (
-                                                <span className="text-2xl font-bold flex-shrink-0" style={{ color: lineColors[selectedFirstLine] || '#8B5CF6' }}>{selectedFirstLine}</span>
-                                            )}
-                                        </div>
-                                        <div className="flex-1 py-2">
-                                            <p className="text-base font-bold text-slate-900">{selectedJourney.depName}</p>
-                                            <p className="text-sm text-slate-500">Départ</p>
-                                            <p className="text-xs text-slate-400 mt-1">{selectedJourney.dep}</p>
-                                        </div>
-                                    </div>
-
-                                    {/* Étape intermédiaire */}
-                                    {selectedJourney.legs?.length > 1 && (
-                                        <div className="relative mb-8 flex gap-4">
-                                            <div className="flex flex-col items-center justify-center w-10">
-                                                <div className="h-6 w-6 rounded-full flex-shrink-0" style={{ backgroundColor: lineColors[selectedConnectionLine] || lineColors[selectedFirstLine] || '#8B5CF6' }} />
-                                            </div>
-                                            <div className="flex-1 py-2">
-                                                <p className="text-sm font-bold text-slate-900">{selectedTransferStop}</p>
-                                                <p className="text-xs text-slate-500">Correspondance</p>
-                                                <p className="text-xs text-slate-400 mt-1">{selectedConnectionDuration}</p>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Icône marche */}
-                                    {selectedJourney.legs?.length > 1 && (
-                                        <div className="relative mb-8 flex gap-4">
-                                            <div className="flex flex-col items-center justify-center w-10">
-                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-6 w-6 text-slate-400 flex-shrink-0">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M14 12c0 1.105-.895 2-2 2s-2-.895-2-2 .895-2 2-2 2 .895 2 2z" />
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M8 18c-.5-1-1-3-1-4 0-2.21 1.79-4 4-4s4 1.79 4 4c0 1-1 3-1 4" />
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 2v4" />
-                                                </svg>
-                                            </div>
-                                            <div className="flex-1 py-2">
-                                                <p className="text-xs text-slate-400">{selectedConnectionDuration}</p>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {/* Arrivée */}
-                                    <div className="relative flex gap-4">
-                                        <div className="flex flex-col items-center justify-center w-10">
-                                            {selectedLastLine && lineIcons[selectedLastLine] ? (
-                                                <img
-                                                    src={lineIcons[selectedLastLine]}
-                                                    alt={selectedLastLine}
-                                                    className="h-10 w-10 object-contain flex-shrink-0"
-                                                />
-                                            ) : (
-                                                <span className="text-2xl font-bold flex-shrink-0" style={{ color: lineColors[selectedLastLine] || '#10B981' }}>{selectedLastLine}</span>
-                                            )}
-                                        </div>
-                                        <div className="flex-1 py-2">
-                                            <p className="text-base font-bold text-slate-900">{selectedJourney.arrName}</p>
-                                            <p className="text-sm text-slate-500">Arrivée</p>
-                                            <p className="text-xs text-slate-400 mt-1">{selectedJourney.arr}</p>
-                                        </div>
-                                    </div>
-                                </div>
+                            <div className="mt-6 p-6 rounded-lg bg-white border border-white text-center">
+                                <p className="text-black font-semibold text-lg">Fonctionnalité toujours en développement</p>
                             </div>
                         </div>
                     </>
@@ -991,7 +907,7 @@ export default function MesTrajetsTest() {
                 <div className={`mt-4 ${inputsOpen ? 'translate-y-0' : 'translate-y-full'} fixed bottom-0 left-0 right-0 z-20 border-t border-gray-300 bg-white p-4 shadow-xl transition-transform duration-300 sm:relative sm:translate-y-0 sm:border-none sm:shadow-none sm:p-0`}>
                     <div className="flex justify-between items-center mb-3">
                         <span className="font-bold">Configuration du trajet {currentTrajet}</span>
-                        <button className="text-gray-600" onClick={() => { const newState = !inputsOpen; setInputsOpen(newState); if (newState) setMenuOpen(false); }}>
+                        <button className="text-gray-600" onClick={() => { const newState = !inputsOpen; if (newState) { openInputs(); } else { setInputsOpen(false); } }}>
                             {inputsOpen ? 'v Cacher' : '^ Ouvrir'}
                         </button>
                     </div>

@@ -2,16 +2,15 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import Settings from './settings.jsx';
 
-export default function Navbar({ title, menuOpen, setMenuOpen, onMenuOpen, showHamburger = true }) {
-    const [settingsOpen, setSettingsOpen] = useState(false);
-
+export default function Navbar({ title, menuOpen, setMenuOpen, onMenuOpen, settingsOpen, setSettingsOpen, onSettingsOpen, showHamburger = true }) {
     const closeMenu = () => setMenuOpen(false);
 
     const toggleMenu = () => {
         const newState = !menuOpen;
-        setMenuOpen(newState);
         if (newState && onMenuOpen) {
             onMenuOpen();
+        } else {
+            setMenuOpen(false);
         }
     };
 
@@ -54,7 +53,14 @@ export default function Navbar({ title, menuOpen, setMenuOpen, onMenuOpen, showH
                     {/* Settings menu */}
                     <div>
                         <button
-                            onClick={() => setSettingsOpen(!settingsOpen)}
+                            onClick={() => {
+                                const newState = !settingsOpen;
+                                if (newState && onSettingsOpen) {
+                                    onSettingsOpen();
+                                } else {
+                                    setSettingsOpen(false);
+                                }
+                            }}
                             className="p-2 rounded-md hover:bg-gray-100 transition-colors duration-150"
                             aria-label="Settings"
                         >

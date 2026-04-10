@@ -1,37 +1,43 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+
+const DEFAULTS = {
+    wheelchair: false,
+    walkSpeed: 1.4,
+};
 
 export default function Settings({ settingsOpen, setSettingsOpen }) {
-    const [theme, setTheme] = useState('light');
-    const [wheelchair, setWheelchair] = useState(false);
-    const [walkSpeed, setWalkSpeed] = useState(1.4); // en m/s (convertir de km/h)
+    const [wheelchair, setWheelchair] = useState(DEFAULTS.wheelchair);
+    const [walkSpeed, setWalkSpeed] = useState(DEFAULTS.walkSpeed);
+
+    // Charger depuis localStorage au montage
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem('tag-express-settings');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                if (parsed.wheelchair !== undefined) setWheelchair(parsed.wheelchair);
+                if (parsed.walkSpeed !== undefined) setWalkSpeed(parsed.walkSpeed);
+            }
+        } catch (e) {
+            console.error('Erreur chargement settings:', e);
+        }
+    }, []);
+
+    // Sauvegarder dans localStorage à chaque changement
+    useEffect(() => {
+        localStorage.setItem('tag-express-settings', JSON.stringify({ wheelchair, walkSpeed }));
+    }, [wheelchair, walkSpeed]);
 
     const closeSettings = () => setSettingsOpen(false);
 
-    // Convertir m/s en km/h pour l'affichage
     const speedInKmh = (walkSpeed * 3.6).toFixed(1);
-
-    // Convertir km/h en m/s
-    const handleSpeedChange = (kmh) => {
-        const ms = kmh / 3.6;
-        setWalkSpeed(ms);
-    };
+    const handleSpeedChange = (kmh) => setWalkSpeed(kmh / 3.6);
 
     return (
         <>
-            {/* Button pour afficher les settings si fermé */}
-            {!settingsOpen && (
-                <div className="fixed bottom-0 left-0 right-0 z-50 bg-gray-100 border-t border-gray-300 p-2 shadow-md">
-                    <button
-                        className="w-full py-3 bg-blue-600 text-white rounded-t-lg"
-                        onClick={() => setSettingsOpen(true)}
-                    >
-                        ^ Ouvrir les paramètres
-                    </button>
-                </div>
-            )}
 
             {/* Settings Panel - slide up animation */}
-            <div className={`${settingsOpen ? 'translate-y-0' : 'translate-y-full'} fixed bottom-0 left-0 right-0 z-20 border-t border-gray-300 bg-white p-4 shadow-xl transition-transform duration-500 sm:relative sm:translate-y-0 sm:border-none sm:shadow-none sm:p-0`}>
+            <div className={`${settingsOpen ? 'translate-y-0' : 'translate-y-full'} fixed bottom-0 left-0 right-0 border-t border-gray-300 bg-white p-4 shadow-xl transition-transform duration-300 sm:relative sm:translate-y-0 sm:border-none sm:shadow-none sm:p-0`} style={{ zIndex: 60 }}>
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold">Paramètres</h2>
                     <button
