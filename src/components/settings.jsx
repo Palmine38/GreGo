@@ -26,6 +26,7 @@ export default function Settings({ settingsOpen, setSettingsOpen }) {
     // Sauvegarder dans localStorage à chaque changement
     useEffect(() => {
         localStorage.setItem('tag-express-settings', JSON.stringify({ wheelchair, walkSpeed }));
+        console.log('⚙️ Settings sauvegardés:', { wheelchair, walkSpeed });
     }, [wheelchair, walkSpeed]);
 
     const closeSettings = () => setSettingsOpen(false);

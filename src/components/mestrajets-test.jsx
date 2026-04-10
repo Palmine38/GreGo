@@ -47,14 +47,13 @@ export default function MesTrajetsTest() {
     const [depSuggestions, setDepSuggestions] = useState([]);
     const [arrSuggestions, setArrSuggestions] = useState([]);
     const [inputsOpen, setInputsOpen] = useState(false);
-    const [saveStatus, setSaveStatus] = useState('');
     const [menuOpen, setMenuOpen] = useState(false);
     const [settingsOpen, setSettingsOpen] = useState(false);
     const [selectedJourney, setSelectedJourney] = useState(null);
     const [journeyDetailsOpen, setJourneyDetailsOpen] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
 
-    const DEBUG = true;
+    const DEBUG = false;
 
     // État pour les icones des lignes chargées depuis linesicons.txt
     const [lineIcons, setLineIcons] = useState({});
@@ -76,20 +75,6 @@ export default function MesTrajetsTest() {
     }, [selectedJourney]);
 
     useEffect(() => { trajetsRef.current = trajets; }, [trajets]);
-
-    useEffect(() => {
-        const trajet = trajets[currentTrajet];
-        const currentLine = line.trim().toUpperCase();
-        const savedLine = (trajet?.line || '').trim().toUpperCase();
-        const currentDep = dep.trim();
-        const currentArr = arr.trim();
-        const savedDep = trajet?.depName?.trim() || '';
-        const savedArr = trajet?.arrName?.trim() || '';
-
-        if ((saveStatus === 'saved' || saveStatus === 'saved-idle') && (currentLine !== savedLine || currentDep !== savedDep || currentArr !== savedArr)) {
-            setSaveStatus('');
-        }
-    }, [dep, arr, line, currentTrajet, trajets, saveStatus]);
 
     useEffect(() => {
         const fetchStops = async () => {
@@ -358,6 +343,7 @@ export default function MesTrajetsTest() {
 
         const matched = Object.keys(stopsMap)
             .filter((k) => removeAccents(k).includes(q))
+            .filter((k) => removeAccents(stopsMap[k][1].toLowerCase()) !== q)
             .slice(0, 10)
             .map((k) => stopsMap[k][1]);
         return matched;
@@ -370,27 +356,6 @@ export default function MesTrajetsTest() {
     useEffect(() => {
         setArrSuggestions(suggestionsFor(arr));
     }, [arr, stopsMap]);
-
-    const saveCurrentTrajet = () => {
-        const from = findStop(dep);
-        const to = findStop(arr);
-
-        const updatedTrajets = {
-            ...trajets,
-            [currentTrajet]: {
-                line: line.toUpperCase(),
-                depId: from ? from[0].split('::')[0].replace('SEM:', '') : '',
-                arrId: to ? to[0].split('::')[0].replace('SEM:', '') : '',
-                depName: dep.trim(),
-                arrName: arr.trim()
-            }
-        };
-        console.log('Sauvegarde trajet:', currentTrajet, updatedTrajets[currentTrajet]);
-        setTrajets(updatedTrajets);
-
-        setSaveStatus('saved');
-        setTimeout(() => setSaveStatus('saved-idle'), 2000);
-    };
 
     const loadTrajet = (trajetKey) => {
         const trajet = trajets[trajetKey];
@@ -420,6 +385,7 @@ export default function MesTrajetsTest() {
         const lineValue = params.line !== undefined ? params.line : line;
         const trajetKey = params.trajetKey || currentTrajet;
         const shouldUpdateGlobal = !params.trajetKey || params.trajetKey === currentTrajet;
+        const isManual = params.manual === true;
 
         if (shouldUpdateGlobal) {
             setDep(depValue);
@@ -565,6 +531,21 @@ export default function MesTrajetsTest() {
                 if (shouldUpdateGlobal) {
                     setError('');
                 }
+            }
+
+            if (isManual) {
+                const updatedTrajets = {
+                    ...trajetsRef.current,
+                    [trajetKey]: {
+                        line: lineValue.toUpperCase(),
+                        depId: from[0].split('::')[0].replace('SEM:', ''),
+                        arrId: to[0].split('::')[0].replace('SEM:', ''),
+                        depName: from[1],
+                        arrName: to[1]
+                    }
+                };
+                setTrajets(updatedTrajets);
+                console.log('💾 Trajet sauvegardé manuellement:', trajetKey, updatedTrajets[trajetKey]);
             }
 
             const trajetData = {
@@ -744,16 +725,6 @@ export default function MesTrajetsTest() {
                 <div className="m-4 p-4 rounded-lg border border-gray-300 bg-white shadow-xl">
                     <div className="flex justify-between items-center mb-3">
                         <h1 className="text-2xl font-bold">Trajet {currentTrajet}</h1>
-                        <button
-                            onClick={saveCurrentTrajet}
-                            disabled={saveStatus !== ''}
-                            className={`px-3 py-1 text-sm rounded-lg font-regular transition-all ${saveStatus === 'saved' ? 'bg-emerald-500 text-white cursor-default' :
-                                saveStatus === 'saved-idle' ? 'bg-gray-200 text-gray-600 cursor-default' :
-                                    'bg-blue-600 text-white hover:bg-blue-700'
-                                }`}
-                        >
-                            {saveStatus === 'saved' ? 'Sauvegardé !' : 'Sauvegarder'}
-                        </button>
                     </div>
 
                     {error && <div className="mt-3 p-2 bg-red-100 text-red-700 rounded">{error}</div>}
@@ -929,7 +900,7 @@ export default function MesTrajetsTest() {
                                 value={dep}
                                 onChange={(e) => setDep(e.target.value)}
                                 className="w-full border p-2 rounded"
-                                placeholder="ex: Pont de Vence"
+                                placeholder="ex: Victor Hugo"
                             />
                             {dep && computedSuggestions.length > 0 && (
                                 <ul className="absolute z-40 left-0 right-0 mt-1 border border-gray-200 rounded bg-white max-h-40 overflow-y-auto shadow-lg">
@@ -982,7 +953,7 @@ export default function MesTrajetsTest() {
 
                     <div className="space-y-2 mt-4 flex flex-col items-stretch">
                         <button
-                            onClick={() => search(0)}
+                            onClick={() => search(0, { manual: true })}
                             disabled={loading}
                             className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg"
                         >
