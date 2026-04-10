@@ -2,7 +2,7 @@
 [![Vite](https://img.shields.io/badge/Vite-8.0.1-646CFF.svg)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.2.2-38B2AC.svg)](https://tailwindcss.com/)
 
-# TAG Express - Application Web [![TAGexpress](https://img.shields.io/badge/TAG_express-1.1-brightgreen)](https://web-tag-express.vercel.app/)
+# TAG Express - Application Web [![TAGexpress](https://img.shields.io/badge/GreGo-pre2.0-brightgreen)](https://web-tag-express.vercel.app/)
 
 **Release 2.0 prévue bientôt : refonte de l'interface, pour une app plus pratique et moderne**
 
