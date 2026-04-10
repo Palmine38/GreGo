@@ -329,13 +329,24 @@ export default function MesTrajetsTest() {
         localStorage.setItem('tag-express-trajets', JSON.stringify(trajets));
     }, [trajets]);
 
+    // Fonction pour enlever les accents des chaînes de caractères
+    const removeAccents = (str) => {
+        return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    };
+
     const findStop = (query) => {
         if (!query || !query.trim()) return null;
-        const key = query.trim().toLowerCase();
-        if (stopsMap[key]) return stopsMap[key];
+        const key = removeAccents(query.trim().toLowerCase());
 
+        // Chercher exactement avec les accents enlevés
         for (const [k, v] of Object.entries(stopsMap)) {
-            if (k.includes(key) || key.includes(k)) return v;
+            if (removeAccents(k) === key) return v;
+        }
+
+        // Chercher partiellement avec les accents enlevés
+        for (const [k, v] of Object.entries(stopsMap)) {
+            const normalizedK = removeAccents(k);
+            if (normalizedK.includes(key) || key.includes(normalizedK)) return v;
         }
 
         return null;
@@ -343,11 +354,10 @@ export default function MesTrajetsTest() {
 
     const suggestionsFor = (value) => {
         if (!value.trim()) return [];
-        const q = value.trim().toLowerCase();
-        if (stopsMap[q]) return [];
+        const q = removeAccents(value.trim().toLowerCase());
 
         const matched = Object.keys(stopsMap)
-            .filter((k) => k.includes(q))
+            .filter((k) => removeAccents(k).includes(q))
             .slice(0, 10)
             .map((k) => stopsMap[k][1]);
         return matched;
