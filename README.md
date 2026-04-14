@@ -1,8 +1,9 @@
+[![Bannière Grego](https://image.noelshack.com/fichiers/2026/16/2/1776181360-grego.png)](https://gre-go.vercel.app/)
+
+[![GreGo](https://img.shields.io/badge/GreGo-prerelease_2.0-brightgreen)](https://web-tag-express.vercel.app/)
 [![React](https://img.shields.io/badge/React-18.2.4-blue.svg)](https://reactjs.org/)
 [![Vite](https://img.shields.io/badge/Vite-8.0.1-646CFF.svg)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.2.2-38B2AC.svg)](https://tailwindcss.com/)
-
-# GreGo - Application Web [![TAGexpress](https://img.shields.io/badge/GreGo-prerelease_2.0-brightgreen)](https://web-tag-express.vercel.app/)
 
 **Release 2.0 prévue bientôt : refonte de l'interface, pour une app plus pratique et moderne**
 
