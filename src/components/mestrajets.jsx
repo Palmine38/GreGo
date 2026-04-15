@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import Navbar from './navbar.jsx';
 import LineIcon from './lines-icons.jsx';
 
+const formatDuration = (temps) => (temps > 59) ? Math.floor(temps / 60) + "h " + String(temps % 60).padStart(2, '0') + "min" : String(temps).padStart(2, '0') + "min";
+
 const LINE_NAME_MAP = {
     E: 'Fontanil-Cornillon Palluel / Grenoble Louise Michel',
     A: 'Grenoble Hôtel de Ville / Gières Gare',
@@ -539,7 +541,7 @@ export default function MesTrajetsTest() {
                         arr: arrTime,
                         depName: from[1],
                         arrName: to[1],
-                        dur: `${duration} min`,
+                        dur: formatDuration(duration),
                         direction: legs.length > 0 ? legs[legs.length - 1]?.to?.name || '?' : '?',
                         line: lineValue ? lineValue.toUpperCase() : lineKeys[0] || '?',
                         lineKeys,
@@ -700,7 +702,7 @@ export default function MesTrajetsTest() {
     const selectedTransferStop = selectedJourney?.legs?.length > 1 ? selectedJourney.legs[0]?.to?.name : '';
     const selectedConnectionLine = selectedJourney?.legs?.[1] ? ((selectedJourney.legs[1]?.routeShortName || selectedJourney.legs[1]?.route || selectedJourney.legs[1]?.routeId || '').replace('SEM:', '').toUpperCase()) : '';
     const selectedWalkLeg = selectedJourney?.allLegs?.find((l) => l.mode === 'WALK');
-    const selectedConnectionDuration = selectedWalkLeg ? `${Math.max(1, Math.round(selectedWalkLeg.duration / 60))} min` : '1 min';
+    const selectedConnectionDuration = selectedWalkLeg ? formatDuration(Math.max(1, Math.round(selectedWalkLeg.duration / 60))) : formatDuration(1);
 
     return (
         <>

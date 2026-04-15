@@ -1,7 +1,7 @@
 {
-    "name": "Tag Express",
-    "short_name": "TagExpress",
-    "description": "Application pour les trajets TAG",
+    "name": "GreGo",
+    "short_name": "GreGo",
+    "description": "Application pour la recherche de trajets MTAG",
     "start_url": "/",
     "display": "standalone",
     "background_color": "#ffffff",

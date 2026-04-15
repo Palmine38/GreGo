@@ -1,28 +1,22 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Navbar from './navbar.jsx';
-import LineIcon from './lines-icons.jsx';
+import LineIcon, { LINE_COLORS } from './lines-icons.jsx';
 
-const LINE_NAME_MAP = {
-    E: 'Fontanil-Cornillon Palluel / Grenoble Louise Michel',
-    A: 'Grenoble Hôtel de Ville / Gières Gare',
-    C1: 'Cardeur / Presqu\u00eele',
-    C2: 'Camille-Gros / Presqu\u00eele',
-    B: 'Bishop / Campus',
+const formatDuration = (temps) => {
+    if (temps > 59) {
+        const hours = Math.floor(temps / 60);
+        const minutes = temps % 60;
+        return minutes === 0 ? `${hours}h` : `${hours}h ${String(minutes).padStart(2, '0')}`;
+    }
+    return `${temps} min`;
 };
 
-
-const FALLBACK_STOPS = {
-    'pont de vence': ['SEM:GENPTVENCE::45.23009,5.6823', 'Pont de Vence'],
-    'alsace lorraine': ['SEM:GENALSACELO::45.18911,5.7193', 'Alsace Lorraine'],
-    'neron': ['SEM:NERON::45.21782,5.69334', 'N\u00e9ron'],
-};
-
-const DEFAULT_TRAJET = { line: '', depId: '', arrId: '', depName: '', arrName: '' };
+const DEFAULT_TRAJET = { name: '', line: '', depId: '', arrId: '', depName: '', arrName: '' };
 
 export default function MesTrajetsTest() {
     const [searchParams, setSearchParams] = useSearchParams();
-    const [stopsMap, setStopsMap] = useState(FALLBACK_STOPS);
+    const [stopsMap, setStopsMap] = useState({});
     const [stopsLoaded, setStopsLoaded] = useState(false);
     const [loadedFromStorage, setLoadedFromStorage] = useState(false);
     const [currentTrajet, setCurrentTrajet] = useState('T1');
@@ -35,6 +29,9 @@ export default function MesTrajetsTest() {
     const hasLoadedRef = useRef(false);
     const loadedTrajetsRef = useRef(null);
     const trajetsRef = useRef(trajets);
+    const currentTrajetRef = useRef(currentTrajet);
+    useEffect(() => { currentTrajetRef.current = currentTrajet; }, [currentTrajet]);
+
 
     const [dep, setDep] = useState('');
     const [arr, setArr] = useState('');
@@ -52,8 +49,47 @@ export default function MesTrajetsTest() {
     const [selectedJourney, setSelectedJourney] = useState(null);
     const [journeyDetailsOpen, setJourneyDetailsOpen] = useState(false);
     const [currentTime, setCurrentTime] = useState(new Date());
+    const [settings, setSettings] = useState({ wheelchair: false, walkSpeed: 1.4, numItineraries: 5 });
+    const [renameOpen, setRenameOpen] = useState(false);
+    const [newTrajetName, setNewTrajetName] = useState('');
+    const [showRefreshCheck, setShowRefreshCheck] = useState(false);
+    const inputsOpenBeforeRenameRef = useRef(false);
+    const settingsOpenRef = useRef(false);
+    const initialValuesRef = useRef({ dep: '', arr: '', line: '' });
+    const inputsOpenRef = useRef(inputsOpen);
 
-    const DEBUG = false;
+    const searchBaseDateRef = useRef(searchBaseDate);
+    useEffect(() => { searchBaseDateRef.current = searchBaseDate; }, [searchBaseDate]);
+
+    // Sauvegarder les valeurs initiales quand on ouvre le panneau
+    useEffect(() => {
+        if (inputsOpen && !inputsOpenRef.current) {
+            // On vient d'ouvrir le panneau
+            initialValuesRef.current = { dep, arr, line };
+        }
+        inputsOpenRef.current = inputsOpen;
+    }, [inputsOpen, dep, arr, line]);
+
+    // Charger les settings depuis localStorage
+    useEffect(() => {
+        try {
+            const saved = localStorage.getItem('tag-express-settings');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                setSettings({
+                    wheelchair: parsed.wheelchair ?? false,
+                    walkSpeed: parsed.walkSpeed ?? 1.4,
+                    numItineraries: parsed.numItineraries ?? 5
+                });
+            }
+        } catch (e) {
+            console.error('Erreur chargement settings:', e);
+        }
+    }, []);
+
+
+
+    const DEBUG = false; // Affiche les logs détaillés pour le développement
 
     // État pour les icones des lignes chargées depuis linesicons.txt
     const [lineIcons, setLineIcons] = useState({});
@@ -86,7 +122,7 @@ export default function MesTrajetsTest() {
                     .filter((id) => id?.startsWith('SEM:'))
                     .map((id) => id.replace('SEM:', ''));
 
-                const newMap = { ...FALLBACK_STOPS };
+                const newMap = {};
 
                 await Promise.all(
                     semLines.map(async (l) => {
@@ -106,7 +142,7 @@ export default function MesTrajetsTest() {
                 setStopsMap(newMap);
                 setStopsLoaded(true);
             } catch {
-                setStopsMap(FALLBACK_STOPS);
+                setStopsMap({});
                 setStopsLoaded(true);
             }
         };
@@ -130,13 +166,19 @@ export default function MesTrajetsTest() {
             activeKey = savedActive;
         }
 
+        let cleanedTrajets = {};  // ← déclaré EN DEHORS du if
+
         if (savedTrajets) {
             try {
                 const parsed = JSON.parse(savedTrajets);
-                console.log('Trajets chargés:', parsed);
+                const VALID_KEYS = ['T1', 'T2', 'T3'];
+                cleanedTrajets = Object.fromEntries(
+                    Object.entries(parsed).filter(([k]) => VALID_KEYS.includes(k))
+                );
+                localStorage.setItem('tag-express-trajets', JSON.stringify(cleanedTrajets));
+                loadedTrajetsRef.current = cleanedTrajets;
+                setTrajets(cleanedTrajets);
 
-                loadedTrajetsRef.current = parsed;
-                setTrajets(parsed);
 
                 if (parsed[activeKey]) {
                     setCurrentTrajet(activeKey);
@@ -155,38 +197,31 @@ export default function MesTrajetsTest() {
             }
         }
 
+        const savedCache = localStorage.getItem('tag-express-cache');
+
+        ['T1', 'T2', 'T3'].forEach(t => {
+            const trajet = cleanedTrajets[t];
+            if (trajet?.depId && trajet?.arrId) {
+                searchById(t, trajet);
+            }
+        });
+
         setLoadedFromStorage(true);
         localStorage.setItem('tag-express-active-trajet', activeKey);
     }, []);
 
     useEffect(() => {
         if (stopsLoaded && loadedFromStorage) {
-            console.log('🔄 Pré-chargement de tous les trajets...');
-
             const activeTrajets = loadedTrajetsRef.current;
             if (!activeTrajets) return;
-
             ['T1', 'T2', 'T3'].forEach(t => {
                 const trajet = activeTrajets[t];
-                const hasConfig = trajet && trajet.depName && trajet.arrName;
-                console.log(`  T${t.slice(1)}: ${hasConfig ? '✓ Configuré - Recherche...' : '✗ Pas configuré'}`);
-
-                if (hasConfig) {
-                    // Vérifier si le cache est valide (< 1 min)
-                    const cacheTimestamp = trajetsCacheTimestampRef.current[t];
-                    const now = Date.now();
-                    const isCacheValid = cacheTimestamp && (now - cacheTimestamp) < 60000;
-
-                    if (isCacheValid) {
-                        console.log(`  T${t.slice(1)}: Cache valide, pas de recherche`);
-                    } else {
-                        console.log(`  T${t.slice(1)}: Cache expiré ou inexistant, recherche...`);
-                        search(0, { dep: trajet.depName, arr: trajet.arrName, line: trajet.line, trajetKey: t, save: false });
-                    }
+                if (trajet?.depName && trajet?.arrName) {
+                    search(0, { dep: trajet.depName, arr: trajet.arrName, line: trajet.line, trajetKey: t, save: false, keepInputsOpen: true });
                 }
             });
         }
-    }, [stopsLoaded, loadedFromStorage]);
+    }, [stopsLoaded]);
 
     useEffect(() => {
         if (!stopsLoaded || !loadedFromStorage) return;
@@ -197,7 +232,7 @@ export default function MesTrajetsTest() {
             ['T1', 'T2', 'T3'].forEach(t => {
                 const trajet = activeTrajets[t];
                 if (trajet?.depName && trajet?.arrName) {
-                    search(0, { dep: trajet.depName, arr: trajet.arrName, line: trajet.line, trajetKey: t, save: false });
+                    search(0, { dep: trajet.depName, arr: trajet.arrName, line: trajet.line, trajetKey: t, save: false, keepInputsOpen: true });
                 }
             });
         }, 60000);
@@ -314,6 +349,10 @@ export default function MesTrajetsTest() {
         localStorage.setItem('tag-express-trajets', JSON.stringify(trajets));
     }, [trajets]);
 
+    useEffect(() => {
+        localStorage.setItem('tag-express-cache', JSON.stringify(trajetResultsMap));
+    }, [trajetResultsMap]);
+
     // Fonction pour enlever les accents des chaînes de caractères
     const removeAccents = (str) => {
         return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -341,6 +380,15 @@ export default function MesTrajetsTest() {
         if (!value.trim()) return [];
         const q = removeAccents(value.trim().toLowerCase());
 
+        // Si c'est une correspondance EXACTE ET pas d'espace à la fin, pas de suggestions
+        if (value === value.trim()) {
+            for (const [k, v] of Object.entries(stopsMap)) {
+                if (removeAccents(k) === q) {
+                    return [];
+                }
+            }
+        }
+
         const matched = Object.keys(stopsMap)
             .filter((k) => removeAccents(k).includes(q))
             .filter((k) => removeAccents(stopsMap[k][1].toLowerCase()) !== q)
@@ -366,6 +414,7 @@ export default function MesTrajetsTest() {
             error: trajetData.error || 'Aucune erreur',
             source: trajetResultsMap[trajetKey] ? 'state' : 'cache'
         });
+        currentTrajetRef.current = trajetKey;
         setCurrentTrajet(trajetKey);
         setDep(trajet.depName || '');
         setArr(trajet.arrName || '');
@@ -379,21 +428,90 @@ export default function MesTrajetsTest() {
         localStorage.setItem('tag-express-active-trajet', trajetKey);
     };
 
+    const searchById = async (trajetKey, trajet) => {
+        const depId = trajet.depId;
+        const arrId = trajet.arrId;
+        if (!depId || !arrId) return;
+
+        const savedSettings = JSON.parse(localStorage.getItem('tag-express-settings') || '{}');
+        const now = new Date();
+        const urlParams = new URLSearchParams({
+            fromPlace: depId,
+            toPlace: arrId,
+            arriveBy: 'false',
+            time: now.toTimeString().substr(0, 5),
+            date: now.toISOString().substr(0, 10),
+            routerId: 'default',
+            optimize: 'QUICK',
+            walkReluctance: '5',
+            locale: 'fr',
+            mode: 'WALK,TRANSIT',
+            showIntermediateStops: 'true',
+            minTransferTime: '20',
+            transferPenalty: '60',
+            walkBoardCost: '300',
+            bannedAgencies: 'MCO:MC',
+            walkSpeed: String(savedSettings.walkSpeed || 1.4),
+            numItineraries: String(savedSettings.numItineraries || 5),
+            wheelchair: savedSettings.wheelchair ?? false,
+        });
+
+
+
+        try {
+            const res = await fetch(`https://data.mobilites-m.fr/api/routers/default/plan?${urlParams.toString()}`);
+            const json = await res.json();
+            const itineraries = json.plan?.itineraries || [];
+
+            const filtered = itineraries.map((it) => {
+                const depTime = new Date(it.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+                const arrTime = new Date(it.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+                const duration = Math.round(it.duration / 60);
+                const allLegs = it.legs;
+                const legs = it.legs.filter((l) => l.mode !== 'WALK');
+                const lineKeys = legs.map((leg) => {
+                    const routeShortName = (leg.routeShortName || '').replace('SEM:', '').toUpperCase();
+                    const route = (leg.route || '').replace('SEM:', '').toUpperCase();
+                    const routeId = (leg.routeId || '').replace('SEM:', '').toUpperCase();
+                    return routeShortName || route || routeId || '?';
+                });
+                return {
+                    dep: depTime, arr: arrTime,
+                    depName: trajet.depName, arrName: trajet.arrName,
+                    dur: formatDuration(duration),
+                    direction: legs.length > 0 ? legs[legs.length - 1]?.to?.name || '?' : '?',
+                    line: trajet.line || lineKeys[0] || '?',
+                    lineKeys, legs, allLegs
+                };
+            }).filter((item) => {
+                if (!trajet.line?.trim()) return true;
+                const target = trajet.line.toUpperCase();
+                return item.lineKeys.some((lk) => lk === target || lk.startsWith(target));
+            });
+
+            const trajetData = { results: filtered, error: filtered.length === 0 ? 'Aucun itinéraire trouvé.' : '', timeOffset: 0, searchBaseDate: now };
+            trajetsCacheTimestampRef.current[trajetKey] = Date.now();
+            setTrajetResultsMap(prev => ({ ...prev, [trajetKey]: trajetData }));
+
+            if (trajetKey === currentTrajetRef.current) {
+                setResults(filtered);
+                setError(trajetData.error);
+                setTimeOffset(0);
+                setSearchBaseDate(now);
+            }
+        } catch (err) {
+            console.error('searchById error:', err);
+        }
+    };
+
     const search = async (offset = 0, params = {}) => {
         const depValue = params.dep !== undefined ? params.dep : dep;
         const arrValue = params.arr !== undefined ? params.arr : arr;
         const lineValue = params.line !== undefined ? params.line : line;
         const trajetKey = params.trajetKey || currentTrajet;
-        const shouldUpdateGlobal = !params.trajetKey || params.trajetKey === currentTrajet;
+        const shouldUpdateGlobal = !params.trajetKey || params.trajetKey === currentTrajetRef.current;
         const isManual = params.manual === true;
-
-        if (shouldUpdateGlobal) {
-            setDep(depValue);
-            setArr(arrValue);
-            setLine(lineValue);
-            setError('');
-            setLoading(true);
-        }
+        const keepInputsOpen = params.keepInputsOpen === true;
 
         const from = findStop(depValue);
         const to = findStop(arrValue);
@@ -413,12 +531,13 @@ export default function MesTrajetsTest() {
             return;
         }
 
-        const baseTime = searchBaseDate || new Date();
+        const baseTime = (trajetKey === currentTrajetRef.current ? searchBaseDateRef.current : null) || new Date();
         const now = new Date();
         const anchorTime = baseTime < now ? now : baseTime;
         const queryTime = new Date(anchorTime.getTime() + offset * 60 * 60 * 1000);
-
+        const savedSettings = JSON.parse(localStorage.getItem('tag-express-settings') || '{}');
         const time = queryTime;
+
         const urlParams = new URLSearchParams({
             fromPlace: from[0],
             toPlace: to[0],
@@ -427,16 +546,17 @@ export default function MesTrajetsTest() {
             date: time.toISOString().substr(0, 10),
             routerId: 'default',
             optimize: 'QUICK',
-            walkSpeed: '1.1112',
-            walkReluctance: '10',
+            walkReluctance: '5',
             locale: 'fr',
             mode: 'WALK,TRANSIT',
             showIntermediateStops: 'true',
             minTransferTime: '20',
             transferPenalty: '60',
-            numItineraries: '2',
             walkBoardCost: '300',
             bannedAgencies: 'MCO:MC',
+            walkSpeed: String(savedSettings.walkSpeed || 1.4),
+            numItineraries: String(savedSettings.numItineraries || 5),
+            wheelchair: savedSettings.wheelchair ?? false,
         });
 
         try {
@@ -501,7 +621,7 @@ export default function MesTrajetsTest() {
                         arr: arrTime,
                         depName: from[1],
                         arrName: to[1],
-                        dur: `${duration} min`,
+                        dur: formatDuration(duration),
                         direction: legs.length > 0 ? legs[legs.length - 1]?.to?.name || '?' : '?',
                         line: lineValue ? lineValue.toUpperCase() : lineKeys[0] || '?',
                         lineKeys,
@@ -512,8 +632,7 @@ export default function MesTrajetsTest() {
                 .filter((item) => {
                     if (!lineValue.trim()) return true;
                     const target = lineValue.toUpperCase();
-                    const targetPattern = LINE_NAME_MAP[target]?.toUpperCase() || target;
-                    return item.lineKeys.some((lk) => lk === target || lk === targetPattern || lk.startsWith(target));
+                    return item.lineKeys.some((lk) => lk === target || lk.startsWith(target));
                 });
 
             if (DEBUG) {
@@ -533,18 +652,22 @@ export default function MesTrajetsTest() {
                 }
             }
 
+            // Remplacer le bloc isManual :
             if (isManual) {
                 const updatedTrajets = {
                     ...trajetsRef.current,
                     [trajetKey]: {
+                        ...trajetsRef.current[trajetKey],
                         line: lineValue.toUpperCase(),
-                        depId: from[0].split('::')[0].replace('SEM:', ''),
-                        arrId: to[0].split('::')[0].replace('SEM:', ''),
+                        depId: from[0],           // ← coordonnées complètes "SEM:xxx::lat,lon"
+                        arrId: to[0],             // ← idem
                         depName: from[1],
                         arrName: to[1]
                     }
                 };
                 setTrajets(updatedTrajets);
+                trajetsCacheRef.current[trajetKey] = null;
+                trajetsCacheTimestampRef.current[trajetKey] = null;
                 console.log('💾 Trajet sauvegardé manuellement:', trajetKey, updatedTrajets[trajetKey]);
             }
 
@@ -565,7 +688,7 @@ export default function MesTrajetsTest() {
                 setResults(filtered);
                 setTimeOffset(offset);
                 setSearchBaseDate(anchorTime);
-                setInputsOpen(false);
+                if (!keepInputsOpen) setInputsOpen(false);
             }
         } catch (err) {
             const errorMsg = 'Erreur réseau / API : ' + (err.message || err);
@@ -594,15 +717,47 @@ export default function MesTrajetsTest() {
     };
 
     const handleAddOneHour = async () => {
-        await search(timeOffset + 1, { trajetKey: currentTrajet, save: false });
+        await search(timeOffset + 0.5, { trajetKey: currentTrajet, save: false });
     };
 
     const handleSubtractOneHour = async () => {
-        await search(timeOffset - 1);
+        await search(timeOffset - 0.5);
     };
 
     const handleRefresh = async () => {
-        await search(timeOffset, { trajetKey: currentTrajet, save: false });
+        setShowRefreshCheck(true);
+        setTimeout(() => setShowRefreshCheck(false), 1300);
+        await search(timeOffset, { trajetKey: currentTrajet, save: false, keepInputsOpen: true });
+    };
+
+    const handleSettingsChanged = () => {
+        // Recharger les settings depuis localStorage
+        try {
+            const saved = localStorage.getItem('tag-express-settings');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                setSettings({
+                    wheelchair: parsed.wheelchair ?? false,
+                    walkSpeed: parsed.walkSpeed ?? 1.4,
+                    numItineraries: parsed.numItineraries ?? 5
+                });
+            }
+        } catch (e) { }
+
+        // Vider le cache de tous les trajets
+        ['T1', 'T2', 'T3'].forEach(t => {
+            trajetsCacheRef.current[t] = null;
+            trajetsCacheTimestampRef.current[t] = null;
+        });
+
+        // Re-rechercher tous les trajets configurés
+        const activeTrajets = loadedTrajetsRef.current || trajetsRef.current;
+        ['T1', 'T2', 'T3'].forEach(t => {
+            const trajet = activeTrajets[t];
+            if (trajet?.depName && trajet?.arrName) {
+                search(0, { dep: trajet.depName, arr: trajet.arrName, line: trajet.line, trajetKey: t, save: false });
+            }
+        });
     };
 
     const openJourneyDetails = (item) => {
@@ -669,7 +824,7 @@ export default function MesTrajetsTest() {
     };
 
     const origin = new Date((searchBaseDate || new Date()).getTime() + timeOffset * 60 * 60 * 1000);
-    const afterDate = new Date(origin.getTime() + 60 * 60 * 1000);
+    const afterDate = new Date(origin.getTime() + 30 * 60 * 1000);
     const afterLabel = `après ${afterDate.toTimeString().slice(0, 5)}`;
 
     const selectedFirstLine = selectedJourney ? ((selectedJourney.legs?.[0]?.routeShortName || selectedJourney.legs?.[0]?.route || selectedJourney.legs?.[0]?.routeId || selectedJourney.line || '?').replace('SEM:', '').toUpperCase()) : '';
@@ -677,9 +832,16 @@ export default function MesTrajetsTest() {
     const selectedTransferStop = selectedJourney?.legs?.length > 1 ? selectedJourney.legs[0]?.to?.name : '';
     const selectedConnectionLine = selectedJourney?.legs?.[1] ? ((selectedJourney.legs[1]?.routeShortName || selectedJourney.legs[1]?.route || selectedJourney.legs[1]?.routeId || '').replace('SEM:', '').toUpperCase()) : '';
     const selectedWalkLeg = selectedJourney?.allLegs?.find((l) => l.mode === 'WALK');
-    const selectedConnectionDuration = selectedWalkLeg ? `${Math.max(1, Math.round(selectedWalkLeg.duration / 60))} min` : '1 min';
+    const selectedConnectionDuration = selectedWalkLeg ? formatDuration(Math.max(1, Math.round(selectedWalkLeg.duration / 60))) : formatDuration(1);
 
     // Fonctions pour gérer l'exclusivité des menus
+    const cancel = () => {
+        setDep(initialValuesRef.current.dep);
+        setArr(initialValuesRef.current.arr);
+        setLine(initialValuesRef.current.line);
+        setInputsOpen(false);
+    };
+
     const openMenu = () => {
         setInputsOpen(false);
         setSettingsOpen(false);
@@ -695,36 +857,92 @@ export default function MesTrajetsTest() {
     const openInputs = () => {
         setMenuOpen(false);
         setSettingsOpen(false);
+        setRenameOpen(false);
         setInputsOpen(true);
     };
 
     return (
         <>
-            <Navbar title="Mes trajets (Test)" menuOpen={menuOpen} setMenuOpen={setMenuOpen} onMenuOpen={openMenu} settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen} onSettingsOpen={openSettings} />
+            <Navbar title="Mes trajets (Test)" menuOpen={menuOpen} setMenuOpen={setMenuOpen} onMenuOpen={openMenu} settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen} onSettingsOpen={openSettings} onSettingsChanged={handleSettingsChanged} />
             <div className="min-h-screen relative bg-[#F8FAFC] pb-24">
                 {/* Navbar des trajets */}
                 <div className="bg-white border-b border-gray-200 p-4">
                     <div className="flex gap-3">
-                        {['T1', 'T2', 'T3'].map((t) => (
-                            <button
-                                key={t}
-                                onClick={() => loadTrajet(t)}
-                                className={`flex-1 py-2 px-3 font-semibold transition-colors text-center rounded-lg ${currentTrajet === t
-                                    ? 'bg-blue-600 text-white'
-                                    : trajets[t].line
-                                        ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
-                                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                                    }`}
-                            >
-                                <div>{t}</div>
-                            </button>
-                        ))}
+                        {['T1', 'T2', 'T3'].map((t) => {
+                            const trajetName = trajets[t]?.name || t;
+                            const isTruncated = trajetName.length > 8;
+
+                            return (
+                                <button
+                                    key={t}
+                                    onClick={() => loadTrajet(t)}
+                                    className={`trajet-button flex-1 py-2 px-3 font-semibold transition-colors text-center rounded-lg overflow-hidden ${currentTrajet === t
+                                        ? 'bg-blue-600 text-white'
+                                        : trajets[t].line
+                                            ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                                            : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                        }`}
+                                    title={trajetName}
+                                >
+                                    {isTruncated ? (
+                                        <div style={{
+                                            position: 'relative',
+                                            overflow: 'hidden',
+                                            width: '100%',
+                                            height: '1.2em',
+                                        }}>
+                                            <style>{`
+  @keyframes marqueeSlide {
+    0%   { transform: translateX(100%); }
+    100% { transform: translateX(-100%); }
+  }
+  .marquee-track {
+    display: inline-block;
+    white-space: nowrap;
+    animation: marqueeSlide 11s linear infinite;
+    padding-right: 2rem;  /* espace entre les deux textes */
+  }
+  .marquee-track-delayed {
+    display: inline-block;
+    white-space: nowrap;
+    animation: marqueeSlide 11s linear infinite;
+    animation-delay: -5.5s;
+    position: absolute;
+    top: 0;
+    left: 0;
+    padding-right: 1.5rem;
+  }
+`}</style>
+                                            <span className="marquee-track">{trajetName}</span>
+                                            <span className="marquee-track-delayed">{trajetName}</span>
+                                        </div>
+                                    ) : (
+                                        <span>{trajetName}</span>
+                                    )}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
 
                 <div className="m-4 p-4 rounded-lg border border-gray-300 bg-white shadow-xl">
                     <div className="flex justify-between items-center mb-3">
-                        <h1 className="text-2xl font-bold">Trajet {currentTrajet}</h1>
+                        <h1 className="text-2xl font-bold">{trajets[currentTrajet]?.name || currentTrajet}</h1>
+                        <button
+                            onClick={() => {
+                                inputsOpenBeforeRenameRef.current = inputsOpen;
+                                setNewTrajetName(trajets[currentTrajet]?.name || '');
+                                setInputsOpen(false);
+                                setRenameOpen(true);
+                            }}
+                            className="text-gray-700 hover:text-gray-900 transition-colors p-2"
+                            title="Renommer le trajet"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="size-5">
+                                <path d="m5.433 13.917 1.262-3.155A4 4 0 0 1 7.58 9.42l6.92-6.918a2.121 2.121 0 0 1 3 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 0 1-.65-.65Z" />
+                                <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0 0 10 3H4.75A2.75 2.75 0 0 0 2 5.75v9.5A2.75 2.75 0 0 0 4.75 18h9.5A2.75 2.75 0 0 0 17 15.25V10a.75.75 0 0 0-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5Z" />
+                            </svg>
+                        </button>
                     </div>
 
                     {error && <div className="mt-3 p-2 bg-red-100 text-red-700 rounded">{error}</div>}
@@ -740,10 +958,9 @@ export default function MesTrajetsTest() {
                                         </svg>
                                         <span>{arr}</span>
                                     </div>
-                                    <div className="mt-1 text-sm text-gray-600">{results[0]?.direction}</div>
                                 </div>
                             </div>
-                            <div className="absolute bottom-4 right-4 flex items-center gap-1">
+                            <div className="bottom-4 right-4 flex items-center gap-[0.4rem] mt-2">
                                 {(() => {
                                     // Récupérer toutes les lignes uniques de tous les résultats
                                     const allUniqueLines = Array.from(new Set(results.flatMap(r => r.lineKeys || [])));
@@ -766,9 +983,15 @@ export default function MesTrajetsTest() {
                                 className="ml-auto text-gray-600 hover:text-gray-900 transition-colors"
                                 title="Rafraîchir les résultats"
                             >
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-                                </svg>
+                                {showRefreshCheck ? (
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                                    </svg>
+                                ) : (
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                    </svg>
+                                )}
                             </button>
                         </div>
                     )}
@@ -789,8 +1012,31 @@ export default function MesTrajetsTest() {
                                 >
                                     {/* Icone de ligne - correspondance en diagonale si plusieurs lignes */}
                                     <div className="w-14 h-14 relative flex-shrink-0">
-                                        {item.lineKeys && item.lineKeys.length > 1 ? (
-                                            item.lineKeys.slice(0, 2).map((lk, i) => {
+                                        {item.lineKeys && item.lineKeys.length > 2 ? (
+                                            // Grille 2×2
+                                            <div className="w-14 h-14 relative">
+                                                {item.lineKeys.slice(0, 4).map((lk, i) => {
+                                                    const positions = [
+                                                        'top-0 left-0',
+                                                        'top-0 right-0',
+                                                        'bottom-0 left-0',
+                                                        'bottom-0 right-0',
+                                                    ];
+                                                    return (
+                                                        <div key={`${lk}-${i}`} className={`absolute ${positions[i]}`}>
+                                                            <LineIcon lineKey={lk} size="w-6 h-6" />
+                                                        </div>
+                                                    );
+                                                })}
+                                                {item.lineKeys.length > 4 && (
+                                                    <div className="absolute bottom-0 right-0 w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-[9px] font-bold text-gray-600">
+                                                        +{item.lineKeys.length - 3}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : item.lineKeys && item.lineKeys.length === 2 ? (
+                                            // Diagonale existante
+                                            item.lineKeys.map((lk, i) => {
                                                 const positionClass = i === 0 ? 'top-0 left-0' : 'bottom-0 right-0';
                                                 return (
                                                     <div
@@ -812,15 +1058,15 @@ export default function MesTrajetsTest() {
                                     {/* Séparateur */}
                                     <div className="w-px h-14 bg-gray-300"></div>
 
-                                    {/* Arrivée - à gauche */}
+                                    {/* Départ - à gauche */}
                                     <div className="flex-1 text-left">
-                                        <div className="text-xl font-bold text-gray-900">{item.arr}</div>
+                                        <div className="text-xl font-bold text-gray-900">{item.dep}</div>
                                         <div className="text-sm text-gray-500">{formatTimeUntil(item.dep, currentTime)}</div>
                                     </div>
 
-                                    {/* Départ - à droite */}
+                                    {/* Arrivée - à droite */}
                                     <div className="flex-1 text-right pr-3">
-                                        <div className="text-xl font-bold text-gray-900">{item.dep}</div>
+                                        <div className="text-xl font-bold text-gray-900">{item.arr}</div>
                                         <div className="text-sm text-gray-500">{item.dur}</div>
                                     </div>
                                 </button>
@@ -870,6 +1116,7 @@ export default function MesTrajetsTest() {
                     <>
                         <div className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${journeyDetailsOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={closeJourneyDetails} />
                         <div className={`${journeyDetailsOpen ? 'translate-y-0' : 'translate-y-full'} fixed inset-x-0 bottom-0 z-50 max-h-[90vh] overflow-y-auto rounded-t-3xl border border-slate-200 bg-white p-4 shadow-2xl transition-transform duration-300`}>
+                            <div className="mx-auto mb-4 h-1.5 w-16 rounded-full bg-slate-200" />
                             <button
                                 type="button"
                                 onClick={closeJourneyDetails}
@@ -878,17 +1125,192 @@ export default function MesTrajetsTest() {
                                 ×
                             </button>
 
-                            <div className="mt-6 p-6 rounded-lg bg-white border border-white text-center">
-                                <p className="text-black font-semibold text-lg">Fonctionnalité toujours en développement</p>
+                            {/* Header départ → arrivée */}
+                            <div className="mb-2">
+                                <p className="text-xs uppercase tracking-widest text-slate-400">Détails du trajet</p>
+                                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                                    <span>{selectedJourney.depName}</span>
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 flex-shrink-0">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+                                    </svg>
+                                    <span>{selectedJourney.arrName}</span>
+                                </h2>
+                                <p className="text-sm text-slate-600 mt-1">{selectedJourney.direction}</p>
+                            </div>
+
+                            {/* Résumé horaires */}
+                            <div className="flex items-center gap-4 mb-5 p-3 rounded-2xl bg-slate">
+                                <div>
+                                    <p className="text-xl font-bold">{selectedJourney.dep}</p>
+                                    <p className="text-xs text-slate-600">{formatTimeUntil(selectedJourney.dep, currentTime)}</p>
+                                </div>
+                                <div className="flex-1 border-t border-dashed border-slate-500" />
+                                <p className="text-sm text-slate-600">{selectedJourney.dur}</p>
+                                <div className="flex-1 border-t border-dashed border-slate-500" />
+                                <div className="text-right">
+                                    <p className="text-xl font-bold">{selectedJourney.arr}</p>
+                                </div>
+                            </div>
+
+                            {/* Timeline */}
+                            <div className="relative">
+                                {(() => {
+                                    // Par :
+                                    const allLegs = (selectedJourney.allLegs || []).filter((leg, i, arr) => {
+                                        if (leg.mode !== 'WALK') return true;
+                                        const isFirst = arr.slice(0, i).every(l => l.mode === 'WALK');
+                                        return !isFirst;
+                                    });
+                                    const items = [];
+                                    let prevWasTransit = false;
+
+                                    allLegs.forEach((leg, i) => {
+                                        const isWalk = leg.mode === 'WALK';
+                                        const isTransit = !isWalk;
+                                        const lineName = (leg.routeShortName || leg.route || leg.routeId || '').replace('SEM:', '').toUpperCase();
+                                        if (DEBUG) {
+                                            console.log('lineName:', lineName, '→ color:', lineColors[lineName]);
+                                        }
+                                        const color = LINE_COLORS[lineName] || lineColors[lineName] || '#6B7280';
+                                        const durationMin = Math.round(leg.duration / 60);
+
+                                        if (isTransit) {
+                                            // Arrêt de départ du leg (= correspondance si pas le premier)
+                                            items.push(
+                                                <div key={`transit-start-${i}`} className="flex gap-3 items-start mb-0">
+                                                    <div className="flex flex-col items-center w-8 flex-shrink-0">
+                                                        <LineIcon lineKey={lineName} size="w-8 h-8" />
+                                                        <div className="w-1 flex-1 min-h-[2rem]" style={{ backgroundColor: color }} />
+                                                    </div>
+                                                    <div className="flex items-start gap-2 flex-1">
+                                                        <div className="flex-1">
+                                                            <p className="font-semibold text-sm text-slate-900 leading-tight">{leg.from?.name?.replace(/^[^,]+,\s*/, '')}</p>
+                                                            <p className="text-[12.5px] text-slate-600">{new Date(leg.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+
+                                            // Barre de ligne avec durée + nb arrêts
+                                            const stopCount = (leg.intermediateStops?.length || 0) + 1;
+                                            items.push(
+                                                <div key={`transit-bar-${i}`} className="flex gap-3 mb-0" style={{ minHeight: '3rem' }}>
+                                                    <div className="flex flex-col items-center w-8 flex-shrink-0">
+                                                        <div className="w-1 flex-1" style={{ backgroundColor: color }} />
+                                                    </div>
+                                                    <div className="flex items-center mb-7">
+                                                        <p className="text-[12.5px] text-slate-600">{formatDuration(durationMin)} · {stopCount} arrêt{stopCount > 1 ? 's' : ''}</p>
+                                                    </div>
+                                                </div>
+                                            );
+
+                                            // Arrêt d'arrivée du leg
+                                            const nextLeg = allLegs[i + 1];
+                                            const nextIsTransitWithSameStop = nextLeg && nextLeg.mode !== 'WALK';
+
+                                            items.push(
+                                                <div key={`transit-end-${i}`} className="flex gap-3 items-start mb-0">
+                                                    <div className="flex flex-col items-center w-8 flex-shrink-0">
+                                                        <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                                                        {nextIsTransitWithSameStop && (
+                                                            <div className="w-0 border-l-2 border-dashed border-slate-300" style={{ height: '24px' }} />
+                                                        )}
+                                                    </div>
+                                                    <div className={`flex-1 ${nextIsTransitWithSameStop ? 'mb-0' : ''}`}>
+                                                        <p className="font-semibold text-sm text-slate-900 leading-tight">{leg.to?.name?.replace(/^[^,]+,\s*/, '')}</p>
+                                                        <p className="text-[12.5px] text-slate-600">{new Date(leg.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                                    </div>
+                                                </div>
+                                            );
+
+                                            // Si correspondance directe sans marche, ajouter un gap visuel
+                                            if (nextIsTransitWithSameStop) {
+                                                items.push(
+                                                    <div key={`transfer-gap-${i}`} className="flex gap-3 items-center" style={{ minHeight: '8px' }} />
+                                                );
+                                            }
+
+                                            prevWasTransit = true;
+                                        }
+
+                                        if (isWalk && durationMin >= 1) {
+                                            // Marche entre deux transits = correspondance
+                                            items.push(
+                                                <div key={`walk-${i}`} className="flex gap-3 items-center">
+                                                    <div className="flex flex-col items-center w-8 flex-shrink-0">
+                                                        <div className="border-l-2 border-dashed border-slate-300" style={{ height: '28px', marginTop: '-10px' }} />
+                                                        <img src="/walk.svg" alt="marche" className="w-5 h-5 opacity-60 flex-shrink-0 my-3" />
+                                                        {i !== allLegs.length - 1 && (
+                                                            <div className="border-l-2 border-dashed border-slate-300" style={{ height: '28px', marginBottom: '12px' }} />
+                                                        )}
+                                                    </div>
+                                                    <p className="text-[13px] text-slate-600 mb-5">À pied · {formatDuration(durationMin)}</p>
+                                                </div>
+                                            );
+                                        }
+                                    });
+
+                                    return items;
+                                })()}
                             </div>
                         </div>
                     </>
                 )}
 
-                <div className={`mt-4 ${inputsOpen ? 'translate-y-0' : 'translate-y-full'} fixed bottom-0 left-0 right-0 z-20 border-t border-gray-300 bg-white p-4 shadow-xl transition-transform duration-300 sm:relative sm:translate-y-0 sm:border-none sm:shadow-none sm:p-0`}>
+                {/* Menu Rename */}
+                <div className={`mt-4 ${renameOpen ? 'translate-y-0' : 'translate-y-full'} fixed bottom-0 left-0 right-0 z-50 border-t border-gray-300 bg-white p-4 shadow-xl transition-transform duration-300`}>
                     <div className="flex justify-between items-center mb-3">
-                        <span className="font-bold">Configuration du trajet {currentTrajet}</span>
-                        <button className="text-gray-600" onClick={() => { const newState = !inputsOpen; if (newState) { openInputs(); } else { setInputsOpen(false); } }}>
+                        <span className="font-bold">Renommer le trajet {currentTrajet}</span>
+                        <button className="text-gray-600" onClick={() => {
+                            setRenameOpen(false);
+                            setInputsOpen(inputsOpenBeforeRenameRef.current);
+                        }}>
+                            v Cacher
+                        </button>
+                    </div>
+                    <div className="space-y-3">
+                        <label className="space-y-1 block">
+                            <span>Nouveau nom du trajet</span>
+                            <input
+                                value={newTrajetName}
+                                onChange={(e) => setNewTrajetName(e.target.value)}
+                                className="w-full border p-2 rounded"
+                                placeholder="ex: Maison - Travail"
+                                maxLength="30"
+                            />
+                        </label>
+                        <button
+                            onClick={() => {
+                                if (newTrajetName.trim()) {
+                                    setTrajets(prev => ({
+                                        ...prev,
+                                        [currentTrajet]: { ...prev[currentTrajet], name: newTrajetName }
+                                    }));
+                                }
+                                setRenameOpen(false);
+                                setInputsOpen(inputsOpenBeforeRenameRef.current);
+                            }}
+                            className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg"
+                        >
+                            Confirmer
+                        </button>
+                        <button
+                            onClick={() => {
+                                setRenameOpen(false);
+                                setInputsOpen(inputsOpenBeforeRenameRef.current);
+                            }}
+                            className="w-full px-4 py-3 bg-gray-300 text-black rounded-lg"
+                        >
+                            Annuler
+                        </button>
+                    </div>
+                </div>
+
+                {/* Menu Recherche */}
+                <div className={`mt-4 ${inputsOpen ? 'translate-y-0' : 'translate-y-full'} fixed bottom-0 left-0 right-0 z-20 border-t border-gray-300 bg-white p-4 shadow-xl transition-transform duration-300`}>
+                    <div className="flex justify-between items-center mb-3">
+                        <span className="font-bold">Configuration - {trajets[currentTrajet]?.name || currentTrajet}</span>
+                        <button className="text-gray-600" onClick={() => { const newState = !inputsOpen; if (newState) { openInputs(); } else { cancel(); } }}>
                             {inputsOpen ? 'v Cacher' : '^ Ouvrir'}
                         </button>
                     </div>
@@ -954,10 +1376,10 @@ export default function MesTrajetsTest() {
                     <div className="space-y-2 mt-4 flex flex-col items-stretch">
                         <button
                             onClick={() => search(0, { manual: true })}
-                            disabled={loading}
+                            disabled={loading || !stopsLoaded}
                             className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg"
                         >
-                            {loading ? 'Recherche...' : 'Rechercher'}
+                            {!stopsLoaded ? 'Chargement des arrêts...' : loading ? 'Recherche...' : 'Rechercher'}
                         </button>
                         <button
                             onClick={reset}
@@ -967,11 +1389,11 @@ export default function MesTrajetsTest() {
                         </button>
                     </div>
 
-                    <button onClick={() => setInputsOpen(false)} type="button" className="mt-4 w-full text-center text-gray-600">
-                        fermer
+                    <button onClick={cancel} type="button" className="mt-4 w-full text-center text-gray-600">
+                        Annuler
                     </button>
                 </div>
-            </div>
+            </div >
         </>
     );
 }

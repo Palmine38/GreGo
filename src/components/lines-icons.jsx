@@ -1,5 +1,9 @@
 import React, { useEffect, useState } from 'react';
 
+export const LINE_COLORS = {
+    C11: '#EF7C00',
+    D: '#FD8C06',
+};
 // Cache global pour les données des lignes
 const lineDataCache = new Map();
 let routesPromise = null;
@@ -40,11 +44,11 @@ export default function LineIcon({ lineKey = '', size = 'w-6 h-6' }) {
 
                 const data = route ? {
                     shortName: route.shortName || lineKey,
-                    color: route.color ? '#' + route.color : '#000000',
+                    color: LINE_COLORS[lineKey] || (route.color ? '#' + route.color : '#000000'),
                     type: route.type || ''
                 } : {
                     shortName: lineKey,
-                    color: '#000000',
+                    color: LINE_COLORS[lineKey] || '#000000',
                     type: ''
                 };
 
@@ -81,6 +85,7 @@ export default function LineIcon({ lineKey = '', size = 'w-6 h-6' }) {
 
     const fontSize = sizeMap[size] || 16;
     const isRound = ['TRAM', 'CHRONO_PERI', 'CHRONO'].includes(lineData.type?.toUpperCase());
+    const isCLine = /^C[1-8]$/.test(lineData.shortName?.toUpperCase());
 
     return (
         <div
@@ -92,7 +97,7 @@ export default function LineIcon({ lineKey = '', size = 'w-6 h-6' }) {
             title={lineData.shortName}
         >
             <span
-                className="font-bold text-white leading-none"
+                className={`font-bold leading-none ${isCLine ? 'text-black' : 'text-white'}`}
                 style={{ fontSize: `${fontSize - 4}px` }}
             >
                 {lineData.shortName}
