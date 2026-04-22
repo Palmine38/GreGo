@@ -4,8 +4,19 @@ const DEBUG = true;
 const DEFAULTS = {
     wheelchair: false,
     walkSpeed: 1.4,
-    numItineraries: 5,
+    numItineraries: 10,
 };
+
+const SLIDER_MAX = 20; // valeur slider pour "Max"
+const NUM_ITINERARIES_MAX = 50; // valeur réelle envoyée quand slider = 20
+
+function sliderToItineraries(sliderVal) {
+    return sliderVal === SLIDER_MAX ? NUM_ITINERARIES_MAX : sliderVal;
+}
+
+function itinerariesToSlider(num) {
+    return num === NUM_ITINERARIES_MAX ? SLIDER_MAX : num;
+}
 
 export default function Settings({ settingsOpen, setSettingsOpen, onSettingsChanged }) {
     const fileInputRef = useRef(null);
@@ -108,8 +119,57 @@ export default function Settings({ settingsOpen, setSettingsOpen, onSettingsChan
     const speedInKmh = (walkSpeed * 3.6).toFixed(1);
     const handleSpeedChange = (kmh) => setWalkSpeed(kmh / 3.6);
 
+    const sliderVal = itinerariesToSlider(numItineraries);
+    const isMax = sliderVal === SLIDER_MAX;
+    const handleNumItinerariesChange = (e) => {
+        const val = parseInt(e.target.value) || 0;
+        setNumItineraries(sliderToItineraries(val));
+    };
+
+    // Génère un style inline pour le track avec fill iOS-compatible
+    const sliderStyle = (value, min, max) => {
+        const pct = ((value - min) / (max - min)) * 100;
+        return {
+            appearance: 'none',
+            WebkitAppearance: 'none',
+            width: '100%',
+            height: '6px',
+            borderRadius: '3px',
+            outline: 'none',
+            cursor: 'pointer',
+            background: `linear-gradient(to right, #2563eb ${pct}%, #d1d5db ${pct}%)`,
+        };
+    };
+
     return (
         <>
+            <style>{`
+                input[type='range']::-webkit-slider-thumb {
+                    -webkit-appearance: none;
+                    appearance: none;
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 50%;
+                    background: #2563eb;
+                    cursor: pointer;
+                    border: 2px solid white;
+                    box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+                    margin-top: -8px;
+                }
+                input[type='range']::-moz-range-thumb {
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 50%;
+                    background: #2563eb;
+                    cursor: pointer;
+                    border: 2px solid white;
+                    box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+                }
+                input[type='range']::-webkit-slider-runnable-track {
+                    height: 6px;
+                    border-radius: 3px;
+                }
+            `}</style>
             <div className={`${settingsOpen ? 'translate-y-0' : 'translate-y-full'} fixed bottom-0 left-0 right-0 border-t border-gray-300 bg-white p-4 shadow-xl transition-transform duration-300 sm:relative sm:translate-y-0 sm:border-none sm:shadow-none sm:p-0`} style={{ zIndex: 60 }}>
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold">Paramètres</h2>
@@ -143,7 +203,8 @@ export default function Settings({ settingsOpen, setSettingsOpen, onSettingsChan
                                 value={speedInKmh}
                                 onChange={(e) => handleSpeedChange(parseFloat(e.target.value) || 0)}
                                 step="0.5" min="2" max="20"
-                                className="flex-1 cursor-pointer"
+                                style={sliderStyle(parseFloat(speedInKmh), 2, 20)}
+                                className="flex-1"
                             />
                             <span className="text-sm font-semibold w-12 text-right">{speedInKmh} km/h</span>
                         </div>
@@ -151,18 +212,23 @@ export default function Settings({ settingsOpen, setSettingsOpen, onSettingsChan
                     </div>
 
                     <div className="pb-4">
-                        <label className="block text-sm font-semibold mb-2">Nombre d'itineraires retournés</label>
+                        <label className="block text-sm font-semibold mb-2">Nombre d'itinéraires retournés</label>
                         <div className="flex items-center gap-2">
                             <input
                                 type="range"
-                                value={numItineraries}
-                                onChange={(e) => setNumItineraries(parseInt(e.target.value) || 1)}
-                                min="2" max="10"
-                                className="flex-1 cursor-pointer"
+                                value={sliderVal}
+                                onChange={handleNumItinerariesChange}
+                                min="0" max={SLIDER_MAX}
+                                style={sliderStyle(sliderVal, 0, SLIDER_MAX)}
+                                className="flex-1"
                             />
-                            <span className="text-sm font-semibold w-8 text-right">{numItineraries}</span>
+                            <span className="text-sm font-semibold w-12 text-right">
+                                {isMax ? 'Max' : numItineraries}
+                            </span>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1">Ce paramètre permet de modifier le nombre d'itineraires retournés par la recherche. (Défaut : 5)</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                            Ce paramètre permet de modifier le nombre d'itinéraires retournés par la recherche.
+                        </p>
                     </div>
 
                     <div className="border-t border-gray-200 pt-4">

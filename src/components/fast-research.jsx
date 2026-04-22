@@ -98,6 +98,9 @@ export default function FastResearch() {
     const CACHE_KEY = 'tag-express-fast-research-cache';
     const CACHE_DURATION = 60000;
 
+    const [isDraggingDetails, setIsDraggingDetails] = useState(false);
+    const [isDraggingLineInfo, setIsDraggingLineInfo] = useState(false);
+
     useEffect(() => {
         try {
             const saved = sessionStorage.getItem(CACHE_KEY);
@@ -180,6 +183,7 @@ export default function FastResearch() {
 
     useEffect(() => {
         if (selectedLineInfo) {
+            setLineInfoHeight(60);
             requestAnimationFrame(() => setLineInfoOpen(true));
         }
     }, [selectedLineInfo]);
@@ -467,19 +471,24 @@ export default function FastResearch() {
                             <div className="bottom-4 right-4 flex items-center gap-[0.4rem] mt-2">
                                 {(() => {
                                     const allUniqueLines = Array.from(new Set(results.flatMap(r => r.lineKeys || [])));
-                                    return allUniqueLines.map((lk) => (
-                                        <button key={lk} className="relative" onClick={() => setSelectedLineInfo(lk)}>
-                                            <LineIcon lineKey={lk} size="w-6 h-6" />
-                                            {isLineDisrupted(lk) && (
+                                    return allUniqueLines.map((lk) => {
+                                        const disrupted = isLineDisrupted(lk);
+                                        return disrupted ? (
+                                            <button key={lk} className="relative" onClick={() => setSelectedLineInfo(lk)}>
+                                                <LineIcon lineKey={lk} size="w-6 h-6" />
                                                 <span className="absolute -bottom-1 -right-1" style={{ color: '#e61e1e' }}>
                                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="size-3">
                                                         <path d="M8 3.5 3 12.5h10L8 3.5Z" fill="white" />
                                                         <path fillRule="evenodd" d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
                                                     </svg>
                                                 </span>
-                                            )}
-                                        </button>
-                                    ));
+                                            </button>
+                                        ) : (
+                                            <div key={lk} className="relative">
+                                                <LineIcon lineKey={lk} size="w-6 h-6" />
+                                            </div>
+                                        );
+                                    });
                                 })()}
                             </div>
                         </div>
@@ -507,7 +516,14 @@ export default function FastResearch() {
                     <div className="space-y-2">
                         {results.length === 0 ? (
                             <div className="p-4 text-center text-gray-500">
-                                {loading ? 'Recherche en cours...' : 'Aucun résultat. Lancez la recherche.'}
+                                {loading ? 'Recherche en cours...' : (
+                                    <button
+                                        onClick={openInputs}
+                                        className="text-gray-500 font-semibold underline underline-offset-2"
+                                    >
+                                        Lancer la recherche
+                                    </button>
+                                )}
                             </div>
                         ) : (
                             results.filter(item => getMinutesUntil(item.dep, currentTime) >= 0).map((item, idx) => (
@@ -611,8 +627,11 @@ export default function FastResearch() {
                 </div>
 
                 {!inputsOpen && !selectedJourney && (
-                    <div className="fixed bottom-0 left-0 right-0 z-50 bg-gray-100 border-t border-gray-300 p-2 shadow-md">
-                        <button className="w-full py-3 bg-blue-600 text-white rounded-t-lg" onClick={openInputs}>
+                    <div className="fixed bottom-8 left-1 right-1 z-50 bg-gray-100 border-t border-gray-300 pt-2 shadow-md">
+                        <button
+                            className="w-full py-3 bg-blue-600 text-white rounded-lg"
+                            onClick={openInputs}
+                        >
                             ^ Ouvrir la recherche
                         </button>
                     </div>
@@ -627,13 +646,19 @@ export default function FastResearch() {
                         />
                         <div
                             className={`${journeyDetailsOpen ? 'translate-y-0' : 'translate-y-full'} fixed inset-x-0 bottom-0 z-50 rounded-t-3xl border border-slate-200 bg-white shadow-2xl transition-transform duration-300 flex flex-col`}
-                            style={{ height: `${detailsHeight}vh` }}
+                            style={{
+                                height: `${detailsHeight}vh`,
+                                transition: isDraggingDetails
+                                    ? 'transform 0.3s'
+                                    : 'height 0.35s cubic-bezier(0.32, 0.72, 0, 1), transform 0.3s'
+                            }}
                         >
                             <div
                                 className="flex-shrink-0 flex justify-center py-3 cursor-grab active:cursor-grabbing touch-none select-none"
                                 onPointerDown={(e) => {
                                     dragStartY.current = e.clientY;
                                     dragStartHeight.current = detailsHeight;
+                                    setIsDraggingDetails(true);
                                     e.currentTarget.setPointerCapture(e.pointerId);
                                 }}
                                 onPointerMove={(e) => {
@@ -641,12 +666,27 @@ export default function FastResearch() {
                                     const deltaPx = dragStartY.current - e.clientY;
                                     const deltaVh = (deltaPx / window.innerHeight) * 100;
                                     const maxVh = ((window.innerHeight - 20) / window.innerHeight) * 100;
-                                    const newHeight = Math.min(maxVh, Math.max(20, dragStartHeight.current + deltaVh));
+                                    const newHeight = Math.min(maxVh, Math.max(10, dragStartHeight.current + deltaVh));
                                     setDetailsHeight(newHeight);
                                 }}
                                 onPointerUp={() => {
+                                    if (dragStartY.current !== null) {
+                                        const origin = dragStartHeight.current;
+                                        const current = detailsHeight;
+                                        const delta = origin - current;
+                                        if (delta < -2) {
+                                            setDetailsHeight(90);
+                                        } else if (origin >= 80) {
+                                            if (delta > 5) setDetailsHeight(60);
+                                            else setDetailsHeight(90);
+                                        } else {
+                                            if (delta > 2) closeJourneyDetails();
+                                            else setDetailsHeight(60);
+                                        }
+                                    }
                                     dragStartY.current = null;
                                     dragStartHeight.current = null;
+                                    setIsDraggingDetails(false);
                                 }}
                             >
                                 <div className="h-1.5 w-16 rounded-full bg-slate-300" />
@@ -805,13 +845,19 @@ export default function FastResearch() {
                             />
                             <div
                                 className={`${lineInfoOpen ? 'translate-y-0' : 'translate-y-full'} fixed inset-x-0 bottom-0 z-50 rounded-t-3xl border border-slate-200 bg-white shadow-2xl transition-transform duration-300 flex flex-col`}
-                                style={{ height: `${lineInfoHeight}vh` }}
+                                style={{
+                                    height: `${lineInfoHeight}vh`,
+                                    transition: isDraggingLineInfo
+                                        ? 'transform 0.3s'
+                                        : 'height 0.35s cubic-bezier(0.32, 0.72, 0, 1), transform 0.3s'
+                                }}
                             >
                                 <div
                                     className="flex-shrink-0 flex justify-center py-3 cursor-grab active:cursor-grabbing touch-none select-none"
                                     onPointerDown={(e) => {
                                         lineInfoDragStartY.current = e.clientY;
                                         lineInfoDragStartHeight.current = lineInfoHeight;
+                                        setIsDraggingLineInfo(true);
                                         e.currentTarget.setPointerCapture(e.pointerId);
                                     }}
                                     onPointerMove={(e) => {
@@ -819,12 +865,31 @@ export default function FastResearch() {
                                         const deltaPx = lineInfoDragStartY.current - e.clientY;
                                         const deltaVh = (deltaPx / window.innerHeight) * 100;
                                         const maxVh = ((window.innerHeight - 20) / window.innerHeight) * 100;
-                                        const newHeight = Math.min(maxVh, Math.max(20, lineInfoDragStartHeight.current + deltaVh));
+                                        const newHeight = Math.min(maxVh, Math.max(10, lineInfoDragStartHeight.current + deltaVh));
                                         setLineInfoHeight(newHeight);
                                     }}
                                     onPointerUp={() => {
+                                        if (lineInfoDragStartY.current !== null) {
+                                            const origin = lineInfoDragStartHeight.current;
+                                            const current = lineInfoHeight;
+                                            const delta = origin - current;
+                                            if (delta < -2) {
+                                                setLineInfoHeight(90);
+                                            } else if (origin >= 80) {
+                                                if (delta > 5) setLineInfoHeight(60);
+                                                else setLineInfoHeight(90);
+                                            } else {
+                                                if (delta > 2) {
+                                                    setLineInfoOpen(false);
+                                                    setTimeout(() => setSelectedLineInfo(null), 300);
+                                                } else {
+                                                    setLineInfoHeight(60);
+                                                }
+                                            }
+                                        }
                                         lineInfoDragStartY.current = null;
                                         lineInfoDragStartHeight.current = null;
+                                        setIsDraggingLineInfo(false);
                                     }}
                                 >
                                     <div className="h-1.5 w-16 rounded-full bg-slate-300" />
