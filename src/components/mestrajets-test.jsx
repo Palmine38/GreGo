@@ -1,3 +1,5 @@
+// dev version
+
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Navbar from './navbar.jsx';
@@ -13,6 +15,50 @@ const formatDuration = (temps) => {
 };
 
 const DEFAULT_TRAJET = { name: '', line: '', depId: '', arrId: '', depName: '', arrName: '' };
+
+const DisruptionItem = ({ evt }) => {
+    const [expanded, setExpanded] = useState(false);
+    const contentRef = useRef(null);
+    const [height, setHeight] = useState(0);
+
+    useEffect(() => {
+        if (contentRef.current) {
+            setHeight(expanded ? contentRef.current.scrollHeight : 0);
+        }
+    }, [expanded]);
+
+    const parts = (evt.texte || '').split('|');
+    const titre = parts[0].trim();
+    const corps = parts.slice(1).join('\n').replace(/<[^>]+>/g, '').trim();
+    const lines = corps.split('\n');
+    const jusquauLine = lines.find(l => /jusqu['']au/i.test(l))?.trim();
+    const reste = lines.filter(l => !/jusqu['']au/i.test(l)).join('\n').trim();
+
+    return (
+        <div className="flex gap-2 items-start p-3 rounded-xl bg-amber-50 border border-amber-200">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" className="size-4 flex-shrink-0 mt-0.5" style={{ color: '#fcbe03' }}>
+                <path d="M8 3.5 3 12.5h10L8 3.5Z" fill="white" />
+                <path fillRule="evenodd" fill="currentColor" d="M6.701 2.25c.577-1 2.02-1 2.598 0l5.196 9a1.5 1.5 0 0 1-1.299 2.25H2.804a1.5 1.5 0 0 1-1.3-2.25l5.197-9ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 1 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+            </svg>
+            <div className="flex-1 min-w-0">
+                <button onClick={() => setExpanded(prev => !prev)} className="flex items-center justify-between w-full gap-1">
+                    <p className="text-xs font-semibold text-amber-800 text-left">{titre}</p>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className={`size-3 flex-shrink-0 text-amber-700 transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`}>
+                        <path fillRule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
+                    </svg>
+                </button>
+                <div
+                    style={{ height, overflow: 'hidden', transition: 'height 0.2s ease' }}
+                >
+                    <div ref={contentRef} className="mt-1 space-y-0.5">
+                        {jusquauLine && <p className="text-xs font-medium text-amber-700">{jusquauLine}</p>}
+                        {reste && <p className="text-xs text-amber-600 whitespace-pre-line">{reste}</p>}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 export default function MesTrajetsTest() {
     const [searchParams, setSearchParams] = useSearchParams();
@@ -60,6 +106,49 @@ export default function MesTrajetsTest() {
 
     const searchBaseDateRef = useRef(searchBaseDate);
     useEffect(() => { searchBaseDateRef.current = searchBaseDate; }, [searchBaseDate]);
+
+    const [disruptedLines, setDisruptedLines] = useState(new Set());
+    const [disruptionsRaw, setDisruptionsRaw] = useState({});
+
+    const [detailsHeight, setDetailsHeight] = useState(60);
+    const dragStartY = useRef(null);
+    const dragStartHeight = useRef(null);
+
+    const [selectedLineInfo, setSelectedLineInfo] = useState(null);
+    const [lineInfoOpen, setLineInfoOpen] = useState(false);
+    const [lineInfoHeight, setLineInfoHeight] = useState(60);
+    const lineInfoDragStartY = useRef(null);
+    const lineInfoDragStartHeight = useRef(null);
+
+
+
+    useEffect(() => {
+        const fetchDisruptions = async () => {
+            try {
+                const res = await fetch('https://data.mobilites-m.fr/api/dyn/evtTC/json');
+                const data = await res.json();
+                setDisruptionsRaw(data);
+                const lines = new Set();
+                Object.values(data).forEach(evt => {
+                    if (!evt.visibleTC) return;
+                    const raw = evt.listeLigne || '';
+                    const match = raw.match(/(?:SEM:|[A-Z0-9]+_)(.+)$/);
+                    const lineName = match ? match[1].toUpperCase() : raw.toUpperCase();
+                    lines.add(lineName);
+                    lines.add(raw.toUpperCase());
+                });
+                setDisruptedLines(lines);
+            } catch (e) {
+                console.error('Erreur chargement perturbations:', e);
+            }
+        };
+        fetchDisruptions();
+    }, []);
+
+    const isLineDisrupted = (lineKey) => {
+        if (!lineKey) return false;
+        return disruptedLines.has(lineKey.toUpperCase());
+    };
 
     // Sauvegarder les valeurs initiales quand on ouvre le panneau
     useEffect(() => {
@@ -109,6 +198,12 @@ export default function MesTrajetsTest() {
             requestAnimationFrame(() => setJourneyDetailsOpen(true));
         }
     }, [selectedJourney]);
+
+    useEffect(() => {
+        if (selectedLineInfo) {
+            requestAnimationFrame(() => setLineInfoOpen(true));
+        }
+    }, [selectedLineInfo]);
 
     useEffect(() => { trajetsRef.current = trajets; }, [trajets]);
 
@@ -429,15 +524,24 @@ export default function MesTrajetsTest() {
     };
 
     const searchById = async (trajetKey, trajet) => {
-        const depId = trajet.depId;
-        const arrId = trajet.arrId;
+        // Chercher l'ID complet dans stopsMap si format court
+        const findFullId = (shortId) => {
+            if (shortId.includes('::')) return shortId; // déjà complet
+            for (const [fullId] of Object.values(stopsMap)) {
+                if (fullId.includes(shortId)) return fullId;
+            }
+            return null;
+        };
+
+        const depId = findFullId(trajet.depId);
+        const arrId = findFullId(trajet.arrId);
         if (!depId || !arrId) return;
 
         const savedSettings = JSON.parse(localStorage.getItem('tag-express-settings') || '{}');
         const now = new Date();
         const urlParams = new URLSearchParams({
-            fromPlace: depId,
-            toPlace: arrId,
+            fromPlace: depId.split('::')[1] || depId,
+            toPlace: arrId.split('::')[1] || arrId,
             arriveBy: 'false',
             time: now.toTimeString().substr(0, 5),
             date: now.toISOString().substr(0, 10),
@@ -539,8 +643,8 @@ export default function MesTrajetsTest() {
         const time = queryTime;
 
         const urlParams = new URLSearchParams({
-            fromPlace: from[0],
-            toPlace: to[0],
+            fromPlace: from[0].split('::')[1] || from[0],
+            toPlace: to[0].split('::')[1] || to[0],
             arriveBy: 'false',
             time: time.toTimeString().substr(0, 5),
             date: time.toISOString().substr(0, 10),
@@ -769,6 +873,7 @@ export default function MesTrajetsTest() {
 
     const closeJourneyDetails = () => {
         setJourneyDetailsOpen(false);
+        setDetailsHeight(60);
         setTimeout(() => setSelectedJourney(null), 300);
     };
 
@@ -783,6 +888,14 @@ export default function MesTrajetsTest() {
         setMenuOpen(false);
         setSelectedJourney(null);
         setJourneyDetailsOpen(false);
+        const updatedTrajets = {
+            ...trajetsRef.current,
+            [currentTrajet]: { ...DEFAULT_TRAJET, name: trajetsRef.current[currentTrajet]?.name || '' }
+        };
+        setTrajets(updatedTrajets);
+        loadedTrajetsRef.current = updatedTrajets;
+        trajetsCacheRef.current[currentTrajet] = null;
+        trajetsCacheTimestampRef.current[currentTrajet] = null;
     };
 
     const selectSuggestion = (value, target) => {
@@ -962,10 +1075,23 @@ export default function MesTrajetsTest() {
                             </div>
                             <div className="bottom-4 right-4 flex items-center gap-[0.4rem] mt-2">
                                 {(() => {
-                                    // Récupérer toutes les lignes uniques de tous les résultats
                                     const allUniqueLines = Array.from(new Set(results.flatMap(r => r.lineKeys || [])));
                                     return allUniqueLines.map((lk) => (
-                                        <LineIcon key={lk} lineKey={lk} size="w-6 h-6" />
+                                        <button
+                                            key={lk}
+                                            className="relative"
+                                            onClick={() => setSelectedLineInfo(lk)}
+                                        >
+                                            <LineIcon lineKey={lk} size="w-6 h-6" />
+                                            {isLineDisrupted(lk) && (
+                                                <span className="absolute -bottom-1 -right-1" style={{ color: '#e61e1e' }}>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="size-3">
+                                                        <path d="M8 3.5 3 12.5h10L8 3.5Z" fill="white" />
+                                                        <path fillRule="evenodd" d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+                                                    </svg>
+                                                </span>
+                                            )}
+                                        </button>
                                     ));
                                 })()}
                             </div>
@@ -1015,16 +1141,21 @@ export default function MesTrajetsTest() {
                                         {item.lineKeys && item.lineKeys.length > 2 ? (
                                             // Grille 2×2
                                             <div className="w-14 h-14 relative">
-                                                {item.lineKeys.slice(0, 4).map((lk, i) => {
-                                                    const positions = [
-                                                        'top-0 left-0',
-                                                        'top-0 right-0',
-                                                        'bottom-0 left-0',
-                                                        'bottom-0 right-0',
-                                                    ];
+                                                {item.lineKeys.slice(0, item.lineKeys.length > 4 ? 3 : 4).map((lk, i) => {
+                                                    const positions = ['top-0 left-0', 'top-0 right-0', 'bottom-0 left-0', 'bottom-0 right-0'];
                                                     return (
                                                         <div key={`${lk}-${i}`} className={`absolute ${positions[i]}`}>
-                                                            <LineIcon lineKey={lk} size="w-6 h-6" />
+                                                            <div className="relative">
+                                                                <LineIcon lineKey={lk} size="w-6 h-6" />
+                                                                {isLineDisrupted(lk) && (
+                                                                    <span className="absolute -bottom-1 -right-1" style={{ color: '#e61e1e' }}>
+                                                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="size-3">
+                                                                            <path d="M8 3.5 3 12.5h10L8 3.5Z" fill="white" />
+                                                                            <path fillRule="evenodd" d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+                                                                        </svg>
+                                                                    </span>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     );
                                                 })}
@@ -1044,13 +1175,31 @@ export default function MesTrajetsTest() {
                                                         className={`absolute ${positionClass}`}
                                                         style={{ transform: i === 0 ? 'translate(-10%, -10%)' : 'translate(10%, 10%)' }}
                                                     >
-                                                        <LineIcon lineKey={lk} size="w-8 h-8" />
+                                                        <div key={`${lk}-${i}`} className="relative">
+                                                            <LineIcon lineKey={lk} size="w-8 h-8" />
+                                                            {isLineDisrupted(lk) && (
+                                                                <span className="absolute -bottom-1 -right-1" style={{ color: '#e61e1e' }}>
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="size-4">
+                                                                        <path d="M8 3.5 3 12.5h10L8 3.5Z" fill="white" />
+                                                                        <path fill-rule="evenodd" d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd" />
+                                                                    </svg>
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 );
                                             })
                                         ) : (
-                                            <div className="w-14 h-14 flex items-center justify-center">
+                                            <div className="w-14 h-14 flex items-center justify-center relative">
                                                 <LineIcon lineKey={item.line} size="w-12 h-12" />
+                                                {isLineDisrupted(item.line) && (
+                                                    <span className="absolute bottom-0 right-0" style={{ color: '#e61e1e' }}  >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="size-5">
+                                                            <path d="M8 3.5 3 12.5h10L8 3.5Z" fill="white" />
+                                                            <path fill-rule="evenodd" d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd" />
+                                                        </svg>
+                                                    </span>
+                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -1114,144 +1263,206 @@ export default function MesTrajetsTest() {
 
                 {selectedJourney && (
                     <>
-                        <div className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${journeyDetailsOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={closeJourneyDetails} />
-                        <div className={`${journeyDetailsOpen ? 'translate-y-0' : 'translate-y-full'} fixed inset-x-0 bottom-0 z-50 max-h-[90vh] overflow-y-auto rounded-t-3xl border border-slate-200 bg-white p-4 shadow-2xl transition-transform duration-300`}>
-                            <div className="mx-auto mb-4 h-1.5 w-16 rounded-full bg-slate-200" />
-                            <button
-                                type="button"
-                                onClick={closeJourneyDetails}
-                                className="text-black font-semibold text-lg absolute top-4 right-4 transition-opacity hover:opacity-70"
+                        <div
+                            className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${journeyDetailsOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                            onClick={closeJourneyDetails}
+                        />
+                        <div
+                            className={`${journeyDetailsOpen ? 'translate-y-0' : 'translate-y-full'} fixed inset-x-0 bottom-0 z-50 rounded-t-3xl border border-slate-200 bg-white shadow-2xl transition-transform duration-300 flex flex-col`}
+                            style={{ height: `${detailsHeight}vh` }}
+                        >
+                            {/* Barre draggable — flex-shrink-0, EN DEHORS du scroll */}
+                            <div
+                                className="flex-shrink-0 flex justify-center py-3 cursor-grab active:cursor-grabbing touch-none select-none"
+                                onPointerDown={(e) => {
+                                    dragStartY.current = e.clientY;
+                                    dragStartHeight.current = detailsHeight;
+                                    e.currentTarget.setPointerCapture(e.pointerId);
+                                }}
+                                onPointerMove={(e) => {
+                                    if (dragStartY.current === null) return;
+                                    const deltaPx = dragStartY.current - e.clientY;
+                                    const deltaVh = (deltaPx / window.innerHeight) * 100;
+                                    const maxVh = ((window.innerHeight - 20) / window.innerHeight) * 100;
+                                    const newHeight = Math.min(maxVh, Math.max(20, dragStartHeight.current + deltaVh));
+                                    setDetailsHeight(newHeight);
+                                }}
+                                onPointerUp={() => {
+                                    dragStartY.current = null;
+                                    dragStartHeight.current = null;
+                                }}
                             >
-                                ×
-                            </button>
-
-                            {/* Header départ → arrivée */}
-                            <div className="mb-2">
-                                <p className="text-xs uppercase tracking-widest text-slate-400">Détails du trajet</p>
-                                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                                    <span>{selectedJourney.depName}</span>
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 flex-shrink-0">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-                                    </svg>
-                                    <span>{selectedJourney.arrName}</span>
-                                </h2>
-                                <p className="text-sm text-slate-600 mt-1">{selectedJourney.direction}</p>
+                                <div className="h-1.5 w-16 rounded-full bg-slate-300" />
                             </div>
 
-                            {/* Résumé horaires */}
-                            <div className="flex items-center gap-4 mb-5 p-3 rounded-2xl bg-slate">
-                                <div>
-                                    <p className="text-xl font-bold">{selectedJourney.dep}</p>
-                                    <p className="text-xs text-slate-600">{formatTimeUntil(selectedJourney.dep, currentTime)}</p>
-                                </div>
-                                <div className="flex-1 border-t border-dashed border-slate-500" />
-                                <p className="text-sm text-slate-600">{selectedJourney.dur}</p>
-                                <div className="flex-1 border-t border-dashed border-slate-500" />
-                                <div className="text-right">
-                                    <p className="text-xl font-bold">{selectedJourney.arr}</p>
-                                </div>
-                            </div>
+                            {/* Contenu scrollable */}
+                            <div className="overflow-y-auto flex-1 px-4 pb-4">
+                                <button
+                                    type="button"
+                                    onClick={closeJourneyDetails}
+                                    className="text-black font-semibold text-lg absolute top-4 right-4 transition-opacity hover:opacity-70"
+                                >
+                                    ×
+                                </button>
 
-                            {/* Timeline */}
-                            <div className="relative">
+                                <div className="mb-2">
+                                    <p className="text-xs uppercase tracking-widest text-slate-400">Détails du trajet</p>
+                                    <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                                        <span>{selectedJourney.depName}</span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 flex-shrink-0">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+                                        </svg>
+                                        <span>{selectedJourney.arrName}</span>
+                                    </h2>
+                                    <p className="text-sm text-slate-600 mt-1">{selectedJourney.direction}</p>
+                                </div>
+
+                                <div className="flex items-center gap-4 mb-5 p-3 rounded-2xl">
+                                    <div>
+                                        <p className="text-xl font-bold">{selectedJourney.dep}</p>
+                                        <p className="text-xs text-slate-600">{formatTimeUntil(selectedJourney.dep, currentTime)}</p>
+                                    </div>
+                                    <div className="flex-1 border-t border-dashed border-slate-500" />
+                                    <p className="text-sm text-slate-600">{selectedJourney.dur}</p>
+                                    <div className="flex-1 border-t border-dashed border-slate-500" />
+                                    <div className="text-right">
+                                        <p className="text-xl font-bold">{selectedJourney.arr}</p>
+                                    </div>
+                                </div>
+
+                                {/* Infotrafic - USELESS 
                                 {(() => {
-                                    // Par :
-                                    const allLegs = (selectedJourney.allLegs || []).filter((leg, i, arr) => {
-                                        if (leg.mode !== 'WALK') return true;
-                                        const isFirst = arr.slice(0, i).every(l => l.mode === 'WALK');
-                                        return !isFirst;
-                                    });
-                                    const items = [];
-                                    let prevWasTransit = false;
+                                    const legsLines = (selectedJourney.legs || []).map(leg =>
+                                        (leg.routeShortName || leg.route || leg.routeId || '').replace('SEM:', '').toUpperCase()
+                                    ).filter(Boolean);
 
-                                    allLegs.forEach((leg, i) => {
-                                        const isWalk = leg.mode === 'WALK';
-                                        const isTransit = !isWalk;
-                                        const lineName = (leg.routeShortName || leg.route || leg.routeId || '').replace('SEM:', '').toUpperCase();
-                                        if (DEBUG) {
-                                            console.log('lineName:', lineName, '→ color:', lineColors[lineName]);
+                                    const disruptions = [];
+                                    Object.values(disruptionsRaw).forEach(evt => {
+                                        if (!evt.visibleTC) return;
+                                        const raw = (evt.listeLigne || '').toUpperCase();
+                                        const match = raw.match(/(?:SEM:|[A-Z0-9]+_)(.+)$/);
+                                        const evtLine = match ? match[1] : raw;
+                                        if (legsLines.includes(evtLine)) {
+                                            disruptions.push({ evtLine, evt });
                                         }
-                                        const color = LINE_COLORS[lineName] || lineColors[lineName] || '#6B7280';
-                                        const durationMin = Math.round(leg.duration / 60);
+                                    });
 
-                                        if (isTransit) {
-                                            // Arrêt de départ du leg (= correspondance si pas le premier)
-                                            items.push(
-                                                <div key={`transit-start-${i}`} className="flex gap-3 items-start mb-0">
-                                                    <div className="flex flex-col items-center w-8 flex-shrink-0">
-                                                        <LineIcon lineKey={lineName} size="w-8 h-8" />
-                                                        <div className="w-1 flex-1 min-h-[2rem]" style={{ backgroundColor: color }} />
-                                                    </div>
-                                                    <div className="flex items-start gap-2 flex-1">
-                                                        <div className="flex-1">
-                                                            <p className="font-semibold text-sm text-slate-900 leading-tight">{leg.from?.name?.replace(/^[^,]+,\s*/, '')}</p>
-                                                            <p className="text-[12.5px] text-slate-600">{new Date(leg.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                    if (disruptions.length === 0) return null;
+
+                                    return (
+                                        <div className="mb-4 flex flex-col gap-2">
+                                            {disruptions.map(({ evt }, idx) => (
+                                                <DisruptionItem key={idx} evt={evt} />
+                                            ))}
+                                        </div>
+                                    );
+                                })()} */}
+
+                                {/* Timeline */}
+                                <div className="relative">
+                                    {(() => {
+                                        const allLegs = (selectedJourney.allLegs || []).filter((leg, i, arr) => {
+                                            if (leg.mode !== 'WALK') return true;
+                                            const isFirst = arr.slice(0, i).every(l => l.mode === 'WALK');
+                                            return !isFirst;
+                                        });
+                                        const items = [];
+
+                                        allLegs.forEach((leg, i) => {
+                                            const isWalk = leg.mode === 'WALK';
+                                            const lineName = (leg.routeShortName || leg.route || leg.routeId || '').replace('SEM:', '').toUpperCase();
+                                            const color = LINE_COLORS[lineName] || lineColors[lineName] || '#6B7280';
+                                            const durationMin = Math.round(leg.duration / 60);
+
+                                            if (!isWalk) {
+                                                // ← NOUVEAU : disruption pour cette ligne, juste avant le leg
+                                                const legDisruptions = Object.values(disruptionsRaw).filter(evt => {
+                                                    if (!evt.visibleTC) return false;
+                                                    const raw = (evt.listeLigne || '').toUpperCase();
+                                                    const match = raw.match(/(?:SEM:|[A-Z0-9]+_)(.+)$/);
+                                                    const evtLine = match ? match[1] : raw;
+                                                    return evtLine === lineName;
+                                                });
+                                                if (legDisruptions.length > 0) {
+                                                    items.push(
+                                                        <div key={`disruption-${i}`} className="flex flex-col gap-2 mb-3">
+                                                            {legDisruptions.map((evt, di) => (
+                                                                <DisruptionItem key={di} evt={evt} />
+                                                            ))}
+                                                        </div>
+                                                    );
+                                                }
+
+                                                items.push(
+                                                    <div key={`transit-start-${i}`} className="flex gap-3 items-start mb-0">
+                                                        <div className="flex flex-col items-center w-8 flex-shrink-0">
+                                                            <LineIcon lineKey={lineName} size="w-8 h-8" />
+                                                            <div className="w-1 flex-1 min-h-[2rem]" style={{ backgroundColor: color }} />
+                                                        </div>
+                                                        <div className="flex items-start gap-2 flex-1">
+                                                            <div className="flex-1">
+                                                                <p className="font-semibold text-sm text-slate-900 leading-tight">{leg.from?.name?.replace(/^[^,]+,\s*/, '')}</p>
+                                                                <p className="text-[12.5px] text-slate-600">{new Date(leg.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            );
-
-                                            // Barre de ligne avec durée + nb arrêts
-                                            const stopCount = (leg.intermediateStops?.length || 0) + 1;
-                                            items.push(
-                                                <div key={`transit-bar-${i}`} className="flex gap-3 mb-0" style={{ minHeight: '3rem' }}>
-                                                    <div className="flex flex-col items-center w-8 flex-shrink-0">
-                                                        <div className="w-1 flex-1" style={{ backgroundColor: color }} />
-                                                    </div>
-                                                    <div className="flex items-center mb-7">
-                                                        <p className="text-[12.5px] text-slate-600">{formatDuration(durationMin)} · {stopCount} arrêt{stopCount > 1 ? 's' : ''}</p>
-                                                    </div>
-                                                </div>
-                                            );
-
-                                            // Arrêt d'arrivée du leg
-                                            const nextLeg = allLegs[i + 1];
-                                            const nextIsTransitWithSameStop = nextLeg && nextLeg.mode !== 'WALK';
-
-                                            items.push(
-                                                <div key={`transit-end-${i}`} className="flex gap-3 items-start mb-0">
-                                                    <div className="flex flex-col items-center w-8 flex-shrink-0">
-                                                        <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                                                        {nextIsTransitWithSameStop && (
-                                                            <div className="w-0 border-l-2 border-dashed border-slate-300" style={{ height: '24px' }} />
-                                                        )}
-                                                    </div>
-                                                    <div className={`flex-1 ${nextIsTransitWithSameStop ? 'mb-0' : ''}`}>
-                                                        <p className="font-semibold text-sm text-slate-900 leading-tight">{leg.to?.name?.replace(/^[^,]+,\s*/, '')}</p>
-                                                        <p className="text-[12.5px] text-slate-600">{new Date(leg.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
-                                                    </div>
-                                                </div>
-                                            );
-
-                                            // Si correspondance directe sans marche, ajouter un gap visuel
-                                            if (nextIsTransitWithSameStop) {
-                                                items.push(
-                                                    <div key={`transfer-gap-${i}`} className="flex gap-3 items-center" style={{ minHeight: '8px' }} />
                                                 );
+
+                                                const stopCount = (leg.intermediateStops?.length || 0) + 1;
+                                                items.push(
+                                                    <div key={`transit-bar-${i}`} className="flex gap-3 mb-0" style={{ minHeight: '3rem' }}>
+                                                        <div className="flex flex-col items-center w-8 flex-shrink-0">
+                                                            <div className="w-1 flex-1" style={{ backgroundColor: color }} />
+                                                        </div>
+                                                        <div className="flex items-center mb-7">
+                                                            <p className="text-[12.5px] text-slate-600">{formatDuration(durationMin)} · {stopCount} arrêt{stopCount > 1 ? 's' : ''}</p>
+                                                        </div>
+                                                    </div>
+                                                );
+
+                                                const nextLeg = allLegs[i + 1];
+                                                const nextIsTransitWithSameStop = nextLeg && nextLeg.mode !== 'WALK';
+
+                                                items.push(
+                                                    <div key={`transit-end-${i}`} className="flex gap-3 items-start mb-0">
+                                                        <div className="flex flex-col items-center w-8 flex-shrink-0">
+                                                            <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                                                            {nextIsTransitWithSameStop && (
+                                                                <div className="w-0 border-l-2 border-dashed border-slate-300" style={{ height: '24px' }} />
+                                                            )}
+                                                        </div>
+                                                        <div className={`flex-1 ${nextIsTransitWithSameStop ? 'mb-0' : ''}`}>
+                                                            <p className="font-semibold text-sm text-slate-900 leading-tight">{leg.to?.name?.replace(/^[^,]+,\s*/, '')}</p>
+                                                            <p className="text-[12.5px] text-slate-600">{new Date(leg.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                                        </div>
+                                                    </div>
+                                                );
+
+                                                if (nextIsTransitWithSameStop) {
+                                                    items.push(<div key={`transfer-gap-${i}`} className="flex gap-3 items-center" style={{ minHeight: '8px' }} />);
+                                                }
                                             }
 
-                                            prevWasTransit = true;
-                                        }
-
-                                        if (isWalk && durationMin >= 1) {
-                                            // Marche entre deux transits = correspondance
-                                            items.push(
-                                                <div key={`walk-${i}`} className="flex gap-3 items-center">
-                                                    <div className="flex flex-col items-center w-8 flex-shrink-0">
-                                                        <div className="border-l-2 border-dashed border-slate-300" style={{ height: '28px', marginTop: '-10px' }} />
-                                                        <img src="/walk.svg" alt="marche" className="w-5 h-5 opacity-60 flex-shrink-0 my-3" />
-                                                        {i !== allLegs.length - 1 && (
-                                                            <div className="border-l-2 border-dashed border-slate-300" style={{ height: '28px', marginBottom: '12px' }} />
-                                                        )}
+                                            if (isWalk && durationMin >= 1) {
+                                                items.push(
+                                                    <div key={`walk-${i}`} className="flex gap-3 items-center">
+                                                        <div className="flex flex-col items-center w-8 flex-shrink-0">
+                                                            <div className="border-l-2 border-dashed border-slate-300" style={{ height: '28px', marginTop: '-10px' }} />
+                                                            <img src="/walk.svg" alt="marche" className="w-5 h-5 opacity-60 flex-shrink-0 my-3" />
+                                                            {i !== allLegs.length - 1 && (
+                                                                <div className="border-l-2 border-dashed border-slate-300" style={{ height: '28px', marginBottom: '12px' }} />
+                                                            )}
+                                                        </div>
+                                                        <p className="text-[13px] text-slate-600 mb-5">À pied · {formatDuration(durationMin)}</p>
                                                     </div>
-                                                    <p className="text-[13px] text-slate-600 mb-5">À pied · {formatDuration(durationMin)}</p>
-                                                </div>
-                                            );
-                                        }
-                                    });
+                                                );
+                                            }
+                                        });
 
-                                    return items;
-                                })()}
+                                        return items;
+                                    })()}
+                                </div>
+                                <div style={{ height: '30vh' }} />
                             </div>
                         </div>
                     </>
@@ -1393,6 +1604,100 @@ export default function MesTrajetsTest() {
                         Annuler
                     </button>
                 </div>
+                {selectedLineInfo && (() => {
+                    const lineDisruptions = Object.values(disruptionsRaw).filter(evt => {
+                        if (!evt.visibleTC) return false;
+                        const raw = (evt.listeLigne || '').toUpperCase();
+                        const match = raw.match(/(?:SEM:|[A-Z0-9]+_)(.+)$/);
+                        const evtLine = match ? match[1] : raw;
+                        return evtLine === selectedLineInfo;
+                    });
+
+                    return (
+                        <>
+                            <div
+                                className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${lineInfoOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                                onClick={() => {
+                                    setLineInfoOpen(false);
+                                    setTimeout(() => setSelectedLineInfo(null), 300);
+                                }}
+                            />
+                            <div
+                                className={`${lineInfoOpen ? 'translate-y-0' : 'translate-y-full'} fixed inset-x-0 bottom-0 z-50 rounded-t-3xl border border-slate-200 bg-white shadow-2xl transition-transform duration-300 flex flex-col`}
+                                style={{ height: `${lineInfoHeight}vh` }}
+                            >
+                                {/* Barre draggable */}
+                                <div
+                                    className="flex-shrink-0 flex justify-center py-3 cursor-grab active:cursor-grabbing touch-none select-none"
+                                    onPointerDown={(e) => {
+                                        lineInfoDragStartY.current = e.clientY;
+                                        lineInfoDragStartHeight.current = lineInfoHeight;
+                                        e.currentTarget.setPointerCapture(e.pointerId);
+                                    }}
+                                    onPointerMove={(e) => {
+                                        if (lineInfoDragStartY.current === null) return;
+                                        const deltaPx = lineInfoDragStartY.current - e.clientY;
+                                        const deltaVh = (deltaPx / window.innerHeight) * 100;
+                                        const maxVh = ((window.innerHeight - 20) / window.innerHeight) * 100;
+                                        const newHeight = Math.min(maxVh, Math.max(20, lineInfoDragStartHeight.current + deltaVh));
+                                        setLineInfoHeight(newHeight);
+                                    }}
+                                    onPointerUp={() => {
+                                        lineInfoDragStartY.current = null;
+                                        lineInfoDragStartHeight.current = null;
+                                    }}
+                                >
+                                    <div className="h-1.5 w-16 rounded-full bg-slate-300" />
+                                </div>
+
+                                {/* Contenu scrollable */}
+                                <div className="overflow-y-auto flex-1 px-4 pb-8">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <LineIcon lineKey={selectedLineInfo} size="w-10 h-10" />
+                                        <div>
+                                            <p className="text-xs uppercase tracking-widest text-slate-400">Infotrafic</p>
+                                            <h2 className="text-lg font-bold text-slate-900">Ligne {selectedLineInfo}</h2>
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                setLineInfoOpen(false);
+                                                setTimeout(() => setSelectedLineInfo(null), 300);
+                                            }}
+                                            className="ml-auto text-slate-400 hover:text-slate-700 text-xl font-bold"
+                                        >×</button>
+                                    </div>
+                                    {lineDisruptions.length === 0 ? (
+                                        <p className="text-sm text-slate-500 text-center py-6">Aucune perturbation en cours.</p>
+                                    ) : (
+                                        <div className="flex flex-col gap-2">
+                                            {lineDisruptions.map((evt, i) => {
+                                                const parts = (evt.texte || '').split('|');
+                                                const titre = parts[0].trim();
+                                                const corps = parts.slice(1).join('\n').replace(/<[^>]+>/g, '').trim();
+                                                const lines = corps.split('\n');
+                                                const jusquauLine = lines.find(l => /jusqu['']au/i.test(l))?.trim();
+                                                const reste = lines.filter(l => !/jusqu['']au/i.test(l)).join('\n').trim();
+                                                return (
+                                                    <div key={i} className="flex gap-2 items-start p-3 rounded-xl bg-amber-50 border border-amber-200">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" className="size-4 flex-shrink-0 mt-0.5" style={{ color: '#fcbe03' }}>
+                                                            <path d="M8 3.5 3 12.5h10L8 3.5Z" fill="white" />
+                                                            <path fillRule="evenodd" fill="currentColor" d="M6.701 2.25c.577-1 2.02-1 2.598 0l5.196 9a1.5 1.5 0 0 1-1.299 2.25H2.804a1.5 1.5 0 0 1-1.3-2.25l5.197-9ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 1 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+                                                        </svg>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-xs font-semibold text-amber-800">{titre}</p>
+                                                            {jusquauLine && <p className="text-xs font-medium text-amber-700 mt-0.5">{jusquauLine}</p>}
+                                                            {reste && <p className="text-xs text-amber-600 mt-1 whitespace-pre-line">{reste}</p>}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </>
+                    );
+                })()}
             </div >
         </>
     );

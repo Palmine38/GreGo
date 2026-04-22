@@ -6,9 +6,51 @@ const formatDuration = (temps) => {
     if (temps > 59) {
         const hours = Math.floor(temps / 60);
         const minutes = temps % 60;
-        return minutes === 0 ? `${hours}h` : `${hours}h ${minutes}`;
+        return minutes === 0 ? `${hours}h` : `${hours}h ${String(minutes).padStart(2, '0')}`;
     }
     return `${temps} min`;
+};
+
+const DisruptionItem = ({ evt }) => {
+    const [expanded, setExpanded] = useState(false);
+    const contentRef = useRef(null);
+    const [height, setHeight] = useState(0);
+
+    useEffect(() => {
+        if (contentRef.current) {
+            setHeight(expanded ? contentRef.current.scrollHeight : 0);
+        }
+    }, [expanded]);
+
+    const parts = (evt.texte || '').split('|');
+    const titre = parts[0].trim();
+    const corps = parts.slice(1).join('\n').replace(/<[^>]+>/g, '').trim();
+    const lines = corps.split('\n');
+    const jusquauLine = lines.find(l => /jusqu['']au/i.test(l))?.trim();
+    const reste = lines.filter(l => !/jusqu['']au/i.test(l)).join('\n').trim();
+
+    return (
+        <div className="flex gap-2 items-start p-3 rounded-xl bg-amber-50 border border-amber-200">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" className="size-4 flex-shrink-0 mt-0.5" style={{ color: '#fcbe03' }}>
+                <path d="M8 3.5 3 12.5h10L8 3.5Z" fill="white" />
+                <path fillRule="evenodd" fill="currentColor" d="M6.701 2.25c.577-1 2.02-1 2.598 0l5.196 9a1.5 1.5 0 0 1-1.299 2.25H2.804a1.5 1.5 0 0 1-1.3-2.25l5.197-9ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 1 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+            </svg>
+            <div className="flex-1 min-w-0">
+                <button onClick={() => setExpanded(prev => !prev)} className="flex items-center justify-between w-full gap-1">
+                    <p className="text-xs font-semibold text-amber-800 text-left">{titre}</p>
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className={`size-3 flex-shrink-0 text-amber-700 transition-transform duration-300 ${expanded ? 'rotate-180' : ''}`}>
+                        <path fillRule="evenodd" d="M4.22 6.22a.75.75 0 0 1 1.06 0L8 8.94l2.72-2.72a.75.75 0 1 1 1.06 1.06l-3.25 3.25a.75.75 0 0 1-1.06 0L4.22 7.28a.75.75 0 0 1 0-1.06Z" clipRule="evenodd" />
+                    </svg>
+                </button>
+                <div style={{ height, overflow: 'hidden', transition: 'height 0.2s ease' }}>
+                    <div ref={contentRef} className="mt-1 space-y-0.5">
+                        {jusquauLine && <p className="text-xs font-medium text-amber-700">{jusquauLine}</p>}
+                        {reste && <p className="text-xs text-amber-600 whitespace-pre-line">{reste}</p>}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
 };
 
 export default function FastResearch() {
@@ -33,14 +75,28 @@ export default function FastResearch() {
     const [currentTime, setCurrentTime] = useState(new Date());
     const [lineColors, setLineColors] = useState({});
     const [settings, setSettings] = useState({ wheelchair: false, walkSpeed: 1.4, numItineraries: 5 });
-    const settingsOpenRef = useRef(false);
+    const [showRefreshCheck, setShowRefreshCheck] = useState(false);
+
+    const [disruptedLines, setDisruptedLines] = useState(new Set());
+    const [disruptionsRaw, setDisruptionsRaw] = useState({});
+
+    const [detailsHeight, setDetailsHeight] = useState(60);
+    const dragStartY = useRef(null);
+    const dragStartHeight = useRef(null);
+
+    const [selectedLineInfo, setSelectedLineInfo] = useState(null);
+    const [lineInfoOpen, setLineInfoOpen] = useState(false);
+    const [lineInfoHeight, setLineInfoHeight] = useState(60);
+    const lineInfoDragStartY = useRef(null);
+    const lineInfoDragStartHeight = useRef(null);
+
     const initialValuesRef = useRef({ dep: '', arr: '', line: '' });
     const inputsOpenRef = useRef(inputsOpen);
-
-    const DEBUG = false;
+    const searchBaseDateRef = useRef(searchBaseDate);
+    useEffect(() => { searchBaseDateRef.current = searchBaseDate; }, [searchBaseDate]);
 
     const CACHE_KEY = 'tag-express-fast-research-cache';
-    const CACHE_DURATION = 60000; // 1 min
+    const CACHE_DURATION = 60000;
 
     useEffect(() => {
         try {
@@ -65,16 +121,13 @@ export default function FastResearch() {
         }
     }, []);
 
-    // Sauvegarder les valeurs initiales quand on ouvre le panneau
     useEffect(() => {
         if (inputsOpen && !inputsOpenRef.current) {
-            // On vient d'ouvrir le panneau
             initialValuesRef.current = { dep, arr, line };
         }
         inputsOpenRef.current = inputsOpen;
     }, [inputsOpen, dep, arr, line]);
 
-    // Charger les settings depuis localStorage
     useEffect(() => {
         try {
             const saved = localStorage.getItem('tag-express-settings');
@@ -92,18 +145,44 @@ export default function FastResearch() {
     }, []);
 
     useEffect(() => {
+        const fetchDisruptions = async () => {
+            try {
+                const res = await fetch('https://data.mobilites-m.fr/api/dyn/evtTC/json');
+                const data = await res.json();
+                setDisruptionsRaw(data);
+                const lines = new Set();
+                Object.values(data).forEach(evt => {
+                    if (!evt.visibleTC) return;
+                    const raw = evt.listeLigne || '';
+                    const match = raw.match(/(?:SEM:|[A-Z0-9]+_)(.+)$/);
+                    const lineName = match ? match[1].toUpperCase() : raw.toUpperCase();
+                    lines.add(lineName);
+                    lines.add(raw.toUpperCase());
+                });
+                setDisruptedLines(lines);
+            } catch (e) {
+                console.error('Erreur chargement perturbations:', e);
+            }
+        };
+        fetchDisruptions();
+    }, []);
+
+    const isLineDisrupted = (lineKey) => {
+        if (!lineKey) return false;
+        return disruptedLines.has(lineKey.toUpperCase());
+    };
+
+    useEffect(() => {
         if (selectedJourney) {
             requestAnimationFrame(() => setJourneyDetailsOpen(true));
         }
     }, [selectedJourney]);
 
-    // Vider les résultats quand les settings sont fermés (forcer la re-recherche)
     useEffect(() => {
-        if (settingsOpenRef.current && !settingsOpen && results.length > 0) {
-            setResults([]);
+        if (selectedLineInfo) {
+            requestAnimationFrame(() => setLineInfoOpen(true));
         }
-        settingsOpenRef.current = settingsOpen;
-    }, [settingsOpen]);
+    }, [selectedLineInfo]);
 
     useEffect(() => {
         const fetchStops = async () => {
@@ -116,7 +195,6 @@ export default function FastResearch() {
                     .map((id) => id.replace('SEM:', ''));
 
                 const newMap = {};
-
                 await Promise.all(
                     semLines.map(async (l) => {
                         try {
@@ -126,12 +204,9 @@ export default function FastResearch() {
                                 const key = stop.name.toLowerCase();
                                 newMap[key] = [`${stop.id}::${stop.lat},${stop.lon}`, stop.name];
                             });
-                        } catch {
-                            // ignore
-                        }
+                        } catch { }
                     })
                 );
-
                 setStopsMap(newMap);
                 setStopsLoaded(true);
             } catch {
@@ -139,14 +214,11 @@ export default function FastResearch() {
                 setStopsLoaded(true);
             }
         };
-
         fetchStops();
     }, []);
 
     useEffect(() => {
-        const interval = setInterval(() => {
-            setCurrentTime(new Date());
-        }, 1000);
+        const interval = setInterval(() => setCurrentTime(new Date()), 1000);
         return () => clearInterval(interval);
     }, []);
 
@@ -158,13 +230,11 @@ export default function FastResearch() {
                 const colors = {};
                 routes.forEach(route => {
                     const shortName = route.shortName?.toUpperCase();
-                    if (shortName && route.color) {
-                        colors[shortName] = '#' + route.color;
-                    }
+                    if (shortName && route.color) colors[shortName] = '#' + route.color;
                 });
                 setLineColors(colors);
-            } catch (error) {
-                console.error('Erreur chargement couleurs des lignes:', error);
+            } catch (e) {
+                console.error('Erreur chargement couleurs:', e);
             }
         };
         loadLineColors();
@@ -188,16 +258,11 @@ export default function FastResearch() {
     const suggestionsFor = (value) => {
         if (!value.trim()) return [];
         const q = removeAccents(value.trim().toLowerCase());
-
-        // Si c'est une correspondance EXACTE ET pas d'espace à la fin, pas de suggestions
         if (value === value.trim()) {
-            for (const [k, v] of Object.entries(stopsMap)) {
-                if (removeAccents(k) === q) {
-                    return [];
-                }
+            for (const [k] of Object.entries(stopsMap)) {
+                if (removeAccents(k) === q) return [];
             }
         }
-
         return Object.keys(stopsMap)
             .filter((k) => removeAccents(k).includes(q))
             .filter((k) => removeAccents(stopsMap[k][1].toLowerCase()) !== q)
@@ -207,6 +272,8 @@ export default function FastResearch() {
 
     useEffect(() => { setDepSuggestions(suggestionsFor(dep)); }, [dep, stopsMap]);
     useEffect(() => { setArrSuggestions(suggestionsFor(arr)); }, [arr, stopsMap]);
+
+    const computedSuggestions = useMemo(() => depSuggestions, [depSuggestions]);
 
     const search = async (offset = 0) => {
         setError('');
@@ -218,30 +285,31 @@ export default function FastResearch() {
         if (!from) { setError(`Arrêt de départ '${dep}' non trouvé.`); setLoading(false); return; }
         if (!to) { setError(`Arrêt d'arrivée '${arr}' non trouvé.`); setLoading(false); return; }
 
-        const baseTime = searchBaseDate || new Date();
+        const baseTime = searchBaseDateRef.current || new Date();
         const now = new Date();
         const anchorTime = baseTime < now ? now : baseTime;
         const queryTime = new Date(anchorTime.getTime() + offset * 60 * 60 * 1000);
+        const savedSettings = JSON.parse(localStorage.getItem('tag-express-settings') || '{}');
 
         const urlParams = new URLSearchParams({
-            fromPlace: from[0],
-            toPlace: to[0],
+            fromPlace: from[0].split('::')[1] || from[0],
+            toPlace: to[0].split('::')[1] || to[0],
             arriveBy: 'false',
             time: queryTime.toTimeString().substr(0, 5),
             date: queryTime.toISOString().substr(0, 10),
             routerId: 'default',
             optimize: 'QUICK',
-            walkSpeed: String(settings.walkSpeed || 1.4),
-            walkReluctance: '10',
+            walkReluctance: '5',
             locale: 'fr',
             mode: 'WALK,TRANSIT',
             showIntermediateStops: 'true',
             minTransferTime: '20',
             transferPenalty: '60',
-            numItineraries: String(settings.numItineraries || 5),
             walkBoardCost: '300',
             bannedAgencies: 'MCO:MC',
-            wheelchair: settings.wheelchair,
+            walkSpeed: String(savedSettings.walkSpeed || 1.4),
+            numItineraries: String(savedSettings.numItineraries || 5),
+            wheelchair: savedSettings.wheelchair ?? false,
         });
 
         try {
@@ -255,25 +323,19 @@ export default function FastResearch() {
                 const duration = Math.round(it.duration / 60);
                 const allLegs = it.legs;
                 const legs = it.legs.filter((l) => l.mode !== 'WALK');
-
                 const lineKeys = legs.map((leg) => {
                     const routeShortName = (leg.routeShortName || '').replace('SEM:', '').toUpperCase();
                     const route = (leg.route || '').replace('SEM:', '').toUpperCase();
                     const routeId = (leg.routeId || '').replace('SEM:', '').toUpperCase();
                     return routeShortName || route || routeId || '?';
                 });
-
                 return {
-                    dep: depTime,
-                    arr: arrTime,
-                    depName: from[1],
-                    arrName: to[1],
+                    dep: depTime, arr: arrTime,
+                    depName: from[1], arrName: to[1],
                     dur: formatDuration(duration),
                     direction: legs.length > 0 ? legs[legs.length - 1]?.to?.name || '?' : '?',
                     line: line ? line.toUpperCase() : lineKeys[0] || '?',
-                    lineKeys,
-                    legs,
-                    allLegs,
+                    lineKeys, legs, allLegs,
                 };
             }).filter((item) => {
                 if (!line.trim()) return true;
@@ -308,7 +370,11 @@ export default function FastResearch() {
 
     const handleAddOneHour = () => search(timeOffset + 0.5);
     const handleSubtractOneHour = () => search(timeOffset - 0.5);
-    const handleRefresh = () => search(timeOffset);
+    const handleRefresh = () => {
+        setShowRefreshCheck(true);
+        setTimeout(() => setShowRefreshCheck(false), 1300);
+        search(timeOffset);
+    };
 
     const openJourneyDetails = (item) => {
         setSelectedJourney(item);
@@ -319,20 +385,15 @@ export default function FastResearch() {
 
     const closeJourneyDetails = () => {
         setJourneyDetailsOpen(false);
+        setDetailsHeight(60);
         setTimeout(() => setSelectedJourney(null), 300);
     };
 
     const reset = () => {
-        setDep('');
-        setArr('');
-        setLine('');
-        setResults([]);
-        setTimeOffset(0);
-        setError('');
-        setInputsOpen(true);
-        setMenuOpen(false);
-        setSelectedJourney(null);
-        setJourneyDetailsOpen(false);
+        setDep(''); setArr(''); setLine('');
+        setResults([]); setTimeOffset(0); setError('');
+        setInputsOpen(true); setMenuOpen(false);
+        setSelectedJourney(null); setJourneyDetailsOpen(false);
         sessionStorage.removeItem(CACHE_KEY);
     };
 
@@ -340,8 +401,6 @@ export default function FastResearch() {
         if (target === 'dep') { setDep(value); setDepSuggestions([]); }
         else { setArr(value); setArrSuggestions([]); }
     };
-
-    const computedSuggestions = useMemo(() => depSuggestions, [depSuggestions]);
 
     const getMinutesUntil = (timeStr, now = new Date()) => {
         if (!timeStr) return -Infinity;
@@ -365,11 +424,6 @@ export default function FastResearch() {
         return `dans ${Math.floor(diffMinutes)} min`;
     };
 
-    const origin = new Date((searchBaseDate || new Date()).getTime() + timeOffset * 60 * 60 * 1000);
-    const afterDate = new Date(origin.getTime() + 30 * 60 * 1000);
-    const afterLabel = `après ${afterDate.toTimeString().slice(0, 5)}`;
-
-
     const cancel = () => {
         setDep(initialValuesRef.current.dep);
         setArr(initialValuesRef.current.arr);
@@ -381,9 +435,13 @@ export default function FastResearch() {
     const openSettings = () => { setMenuOpen(false); setInputsOpen(false); setSettingsOpen(true); };
     const openInputs = () => { setMenuOpen(false); setSettingsOpen(false); setInputsOpen(true); };
 
+    const origin = new Date((searchBaseDate || new Date()).getTime() + timeOffset * 60 * 60 * 1000);
+    const afterDate = new Date(origin.getTime() + 30 * 60 * 1000);
+    const afterLabel = `après ${afterDate.toTimeString().slice(0, 5)}`;
+
     return (
         <>
-            <Navbar title="mes trajets" menuOpen={menuOpen} setMenuOpen={setMenuOpen} onMenuOpen={openMenu} settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen} onSettingsOpen={openSettings} />
+            <Navbar title="Mes trajets (Test)" menuOpen={menuOpen} setMenuOpen={setMenuOpen} onMenuOpen={openMenu} settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen} onSettingsOpen={openSettings} />
             <div className="min-h-screen relative bg-[#F8FAFC] pb-24">
 
                 <div className="m-4 p-4 rounded-lg border border-gray-300 bg-white shadow-xl">
@@ -407,9 +465,22 @@ export default function FastResearch() {
                                 </div>
                             </div>
                             <div className="bottom-4 right-4 flex items-center gap-[0.4rem] mt-2">
-                                {Array.from(new Set(results.flatMap(r => r.lineKeys || []))).map((lk) => (
-                                    <LineIcon key={lk} lineKey={lk} size="w-6 h-6" />
-                                ))}
+                                {(() => {
+                                    const allUniqueLines = Array.from(new Set(results.flatMap(r => r.lineKeys || [])));
+                                    return allUniqueLines.map((lk) => (
+                                        <button key={lk} className="relative" onClick={() => setSelectedLineInfo(lk)}>
+                                            <LineIcon lineKey={lk} size="w-6 h-6" />
+                                            {isLineDisrupted(lk) && (
+                                                <span className="absolute -bottom-1 -right-1" style={{ color: '#e61e1e' }}>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="size-3">
+                                                        <path d="M8 3.5 3 12.5h10L8 3.5Z" fill="white" />
+                                                        <path fillRule="evenodd" d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+                                                    </svg>
+                                                </span>
+                                            )}
+                                        </button>
+                                    ));
+                                })()}
                             </div>
                         </div>
                     )}
@@ -420,9 +491,15 @@ export default function FastResearch() {
                                 Résultats pour {new Date(searchBaseDate.getTime() + timeOffset * 60 * 60 * 1000).toTimeString().slice(0, 5)}
                             </span>
                             <button onClick={handleRefresh} disabled={loading} className="ml-auto text-gray-600 hover:text-gray-900 transition-colors" title="Rafraîchir">
-                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
-                                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
-                                </svg>
+                                {showRefreshCheck ? (
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                                    </svg>
+                                ) : (
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="w-4 h-4">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                    </svg>
+                                )}
                             </button>
                         </div>
                     )}
@@ -441,23 +518,70 @@ export default function FastResearch() {
                                     className="w-full text-left flex items-center gap-4 p-3 bg-white border border-gray-200 rounded-3xl shadow-md hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-blue-400"
                                 >
                                     <div className="w-14 h-14 relative flex-shrink-0">
-                                        {item.lineKeys && item.lineKeys.length > 1 ? (
-                                            item.lineKeys.slice(0, 2).map((lk, i) => (
+                                        {item.lineKeys && item.lineKeys.length > 2 ? (
+                                            <div className="w-14 h-14 relative">
+                                                {item.lineKeys.slice(0, item.lineKeys.length > 4 ? 3 : 4).map((lk, i) => {
+                                                    const positions = ['top-0 left-0', 'top-0 right-0', 'bottom-0 left-0', 'bottom-0 right-0'];
+                                                    return (
+                                                        <div key={`${lk}-${i}`} className={`absolute ${positions[i]}`}>
+                                                            <div className="relative">
+                                                                <LineIcon lineKey={lk} size="w-6 h-6" />
+                                                                {isLineDisrupted(lk) && (
+                                                                    <span className="absolute -bottom-1 -right-1" style={{ color: '#e61e1e' }}>
+                                                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="size-3">
+                                                                            <path d="M8 3.5 3 12.5h10L8 3.5Z" fill="white" />
+                                                                            <path fillRule="evenodd" d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+                                                                        </svg>
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                                {item.lineKeys.length > 4 && (
+                                                    <div className="absolute bottom-0 right-0 w-6 h-6 bg-gray-200 rounded-full flex items-center justify-center text-[9px] font-bold text-gray-600">
+                                                        +{item.lineKeys.length - 3}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : item.lineKeys && item.lineKeys.length === 2 ? (
+                                            item.lineKeys.map((lk, i) => (
                                                 <div key={`${lk}-${i}`} className={`absolute ${i === 0 ? 'top-0 left-0' : 'bottom-0 right-0'}`} style={{ transform: i === 0 ? 'translate(-10%, -10%)' : 'translate(10%, 10%)' }}>
-                                                    <LineIcon lineKey={lk} size="w-8 h-8" />
+                                                    <div className="relative">
+                                                        <LineIcon lineKey={lk} size="w-8 h-8" />
+                                                        {isLineDisrupted(lk) && (
+                                                            <span className="absolute -bottom-1 -right-1" style={{ color: '#e61e1e' }}>
+                                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="size-4">
+                                                                    <path d="M8 3.5 3 12.5h10L8 3.5Z" fill="white" />
+                                                                    <path fillRule="evenodd" d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+                                                                </svg>
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
                                             ))
                                         ) : (
-                                            <div className="w-14 h-14 flex items-center justify-center">
+                                            <div className="w-14 h-14 flex items-center justify-center relative">
                                                 <LineIcon lineKey={item.line} size="w-12 h-12" />
+                                                {isLineDisrupted(item.line) && (
+                                                    <span className="absolute bottom-0 right-0" style={{ color: '#e61e1e' }}>
+                                                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="currentColor" className="size-5">
+                                                            <path d="M8 3.5 3 12.5h10L8 3.5Z" fill="white" />
+                                                            <path fillRule="evenodd" d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clipRule="evenodd" />
+                                                        </svg>
+                                                    </span>
+                                                )}
                                             </div>
                                         )}
                                     </div>
+
                                     <div className="w-px h-14 bg-gray-300"></div>
+
                                     <div className="flex-1 text-left">
                                         <div className="text-xl font-bold text-gray-900">{item.dep}</div>
                                         <div className="text-sm text-gray-500">{formatTimeUntil(item.dep, currentTime)}</div>
                                     </div>
+
                                     <div className="flex-1 text-right pr-3">
                                         <div className="text-xl font-bold text-gray-900">{item.arr}</div>
                                         <div className="text-sm text-gray-500">{item.dur}</div>
@@ -494,138 +618,241 @@ export default function FastResearch() {
                     </div>
                 )}
 
+                {/* Panneau détails trajet */}
                 {selectedJourney && (
                     <>
-                        <div className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${journeyDetailsOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={closeJourneyDetails} />
-                        <div className={`${journeyDetailsOpen ? 'translate-y-0' : 'translate-y-full'} fixed inset-x-0 bottom-0 z-50 max-h-[90vh] overflow-y-auto rounded-t-3xl border border-slate-200 bg-white p-4 shadow-2xl transition-transform duration-300`}>
-                            <div className="mx-auto mb-4 h-1.5 w-16 rounded-full bg-slate-200" />
-                            <button
-                                type="button"
-                                onClick={closeJourneyDetails}
-                                className="text-black font-semibold text-lg absolute top-4 right-4 transition-opacity hover:opacity-70"
+                        <div
+                            className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${journeyDetailsOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                            onClick={closeJourneyDetails}
+                        />
+                        <div
+                            className={`${journeyDetailsOpen ? 'translate-y-0' : 'translate-y-full'} fixed inset-x-0 bottom-0 z-50 rounded-t-3xl border border-slate-200 bg-white shadow-2xl transition-transform duration-300 flex flex-col`}
+                            style={{ height: `${detailsHeight}vh` }}
+                        >
+                            <div
+                                className="flex-shrink-0 flex justify-center py-3 cursor-grab active:cursor-grabbing touch-none select-none"
+                                onPointerDown={(e) => {
+                                    dragStartY.current = e.clientY;
+                                    dragStartHeight.current = detailsHeight;
+                                    e.currentTarget.setPointerCapture(e.pointerId);
+                                }}
+                                onPointerMove={(e) => {
+                                    if (dragStartY.current === null) return;
+                                    const deltaPx = dragStartY.current - e.clientY;
+                                    const deltaVh = (deltaPx / window.innerHeight) * 100;
+                                    const maxVh = ((window.innerHeight - 20) / window.innerHeight) * 100;
+                                    const newHeight = Math.min(maxVh, Math.max(20, dragStartHeight.current + deltaVh));
+                                    setDetailsHeight(newHeight);
+                                }}
+                                onPointerUp={() => {
+                                    dragStartY.current = null;
+                                    dragStartHeight.current = null;
+                                }}
                             >
-                                ×
-                            </button>
-
-                            {/* Header départ → arrivée */}
-                            <div className="mb-2">
-                                <p className="text-xs uppercase tracking-widest text-slate-400">Détails du trajet</p>
-                                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                                    <span>{selectedJourney.depName}</span>
-                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 flex-shrink-0">
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
-                                    </svg>
-                                    <span>{selectedJourney.arrName}</span>
-                                </h2>
-                                <p className="text-sm text-slate-600 mt-1">{selectedJourney.direction}</p>
+                                <div className="h-1.5 w-16 rounded-full bg-slate-300" />
                             </div>
 
-                            {/* Résumé horaires */}
-                            <div className="flex items-center gap-4 mb-5 p-3 rounded-2xl bg-slate">
-                                <div>
-                                    <p className="text-xl font-bold">{selectedJourney.dep}</p>
-                                    <p className="text-xs text-slate-600">{formatTimeUntil(selectedJourney.dep, currentTime)}</p>
+                            <div className="overflow-y-auto flex-1 px-4 pb-4">
+                                <button type="button" onClick={closeJourneyDetails} className="text-black font-semibold text-lg absolute top-4 right-4 transition-opacity hover:opacity-70">×</button>
+
+                                <div className="mb-2">
+                                    <p className="text-xs uppercase tracking-widest text-slate-400">Détails du trajet</p>
+                                    <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                                        <span>{selectedJourney.depName}</span>
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 flex-shrink-0">
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+                                        </svg>
+                                        <span>{selectedJourney.arrName}</span>
+                                    </h2>
+                                    <p className="text-sm text-slate-600 mt-1">{selectedJourney.direction}</p>
                                 </div>
-                                <div className="flex-1 border-t border-dashed border-slate-500" />
-                                <p className="text-sm text-slate-600">{selectedJourney.dur}</p>
-                                <div className="flex-1 border-t border-dashed border-slate-500" />
-                                <div className="text-right">
-                                    <p className="text-xl font-bold">{selectedJourney.arr}</p>
+
+                                <div className="flex items-center gap-4 mb-5 p-3 rounded-2xl">
+                                    <div>
+                                        <p className="text-xl font-bold">{selectedJourney.dep}</p>
+                                        <p className="text-xs text-slate-600">{formatTimeUntil(selectedJourney.dep, currentTime)}</p>
+                                    </div>
+                                    <div className="flex-1 border-t border-dashed border-slate-500" />
+                                    <p className="text-sm text-slate-600">{selectedJourney.dur}</p>
+                                    <div className="flex-1 border-t border-dashed border-slate-500" />
+                                    <div className="text-right">
+                                        <p className="text-xl font-bold">{selectedJourney.arr}</p>
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* Timeline */}
-                            <div className="relative">
-                                {(() => {
-                                    // Par :
-                                    const allLegs = (selectedJourney.allLegs || []).filter((leg, i, arr) => {
-                                        if (leg.mode !== 'WALK') return true;
-                                        const isFirst = arr.slice(0, i).every(l => l.mode === 'WALK');
-                                        return !isFirst;
-                                    });
-                                    const items = [];
-                                    let prevWasTransit = false;
+                                {/* Timeline */}
+                                <div className="relative">
+                                    {(() => {
+                                        const allLegs = (selectedJourney.allLegs || []).filter((leg, i, arr) => {
+                                            if (leg.mode !== 'WALK') return true;
+                                            const isFirst = arr.slice(0, i).every(l => l.mode === 'WALK');
+                                            return !isFirst;
+                                        });
+                                        const items = [];
 
-                                    allLegs.forEach((leg, i) => {
-                                        const isWalk = leg.mode === 'WALK';
-                                        const isTransit = !isWalk;
-                                        const lineName = (leg.routeShortName || leg.route || leg.routeId || '').replace('SEM:', '').toUpperCase();
-                                        if (DEBUG) {
-                                            console.log('lineName:', lineName, '→ color:', lineColors[lineName]);
-                                        }
-                                        const color = LINE_COLORS[lineName] || lineColors[lineName] || '#6B7280';
-                                        const durationMin = Math.round(leg.duration / 60);
+                                        allLegs.forEach((leg, i) => {
+                                            const isWalk = leg.mode === 'WALK';
+                                            const lineName = (leg.routeShortName || leg.route || leg.routeId || '').replace('SEM:', '').toUpperCase();
+                                            const color = LINE_COLORS[lineName] || lineColors[lineName] || '#6B7280';
+                                            const durationMin = Math.round(leg.duration / 60);
 
-                                        if (isTransit) {
-                                            // Arrêt de départ du leg (= correspondance si pas le premier)
-                                            items.push(
-                                                <div key={`transit-start-${i}`} className="flex gap-3 items-start mb-0">
-                                                    <div className="flex flex-col items-center w-8 flex-shrink-0">
-                                                        <LineIcon lineKey={lineName} size="w-8 h-8" />
-                                                        <div className="w-1 flex-1 min-h-[2rem]" style={{ backgroundColor: color }} />
-                                                    </div>
-                                                    <div className="flex items-start gap-2 flex-1">
-                                                        <div className="flex-1">
-                                                            <p className="font-semibold text-sm text-slate-900 leading-tight">{leg.from?.name?.replace(/^[^,]+,\s*/, '')}</p>
-                                                            <p className="text-[12.5px] text-slate-600">{new Date(leg.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                            if (!isWalk) {
+                                                const legDisruptions = Object.values(disruptionsRaw).filter(evt => {
+                                                    if (!evt.visibleTC) return false;
+                                                    const raw = (evt.listeLigne || '').toUpperCase();
+                                                    const match = raw.match(/(?:SEM:|[A-Z0-9]+_)(.+)$/);
+                                                    const evtLine = match ? match[1] : raw;
+                                                    return evtLine === lineName;
+                                                });
+                                                if (legDisruptions.length > 0) {
+                                                    items.push(
+                                                        <div key={`disruption-${i}`} className="flex flex-col gap-2 mb-3">
+                                                            {legDisruptions.map((evt, di) => <DisruptionItem key={di} evt={evt} />)}
+                                                        </div>
+                                                    );
+                                                }
+
+                                                items.push(
+                                                    <div key={`transit-start-${i}`} className="flex gap-3 items-start mb-0">
+                                                        <div className="flex flex-col items-center w-8 flex-shrink-0">
+                                                            <LineIcon lineKey={lineName} size="w-8 h-8" />
+                                                            <div className="w-1 flex-1 min-h-[2rem]" style={{ backgroundColor: color }} />
+                                                        </div>
+                                                        <div className="flex items-start gap-2 flex-1">
+                                                            <div className="flex-1">
+                                                                <p className="font-semibold text-sm text-slate-900 leading-tight">{leg.from?.name?.replace(/^[^,]+,\s*/, '')}</p>
+                                                                <p className="text-[12.5px] text-slate-600">{new Date(leg.startTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            );
+                                                );
 
-                                            // Barre de ligne avec durée + nb arrêts
-                                            const stopCount = (leg.intermediateStops?.length || 0) + 1;
-                                            items.push(
-                                                <div key={`transit-bar-${i}`} className="flex gap-3 mb-0" style={{ minHeight: '3rem' }}>
-                                                    <div className="flex flex-col items-center w-8 flex-shrink-0">
-                                                        <div className="w-1 flex-1" style={{ backgroundColor: color }} />
+                                                const stopCount = (leg.intermediateStops?.length || 0) + 1;
+                                                items.push(
+                                                    <div key={`transit-bar-${i}`} className="flex gap-3 mb-0" style={{ minHeight: '3rem' }}>
+                                                        <div className="flex flex-col items-center w-8 flex-shrink-0">
+                                                            <div className="w-1 flex-1" style={{ backgroundColor: color }} />
+                                                        </div>
+                                                        <div className="flex items-center mb-7">
+                                                            <p className="text-[12.5px] text-slate-600">{formatDuration(durationMin)} · {stopCount} arrêt{stopCount > 1 ? 's' : ''}</p>
+                                                        </div>
                                                     </div>
-                                                    <div className="flex items-center mb-7">
-                                                        <p className="text-[12.5px] text-slate-600">{formatDuration(durationMin)} · {stopCount} arrêt{stopCount > 1 ? 's' : ''}</p>
-                                                    </div>
-                                                </div>
-                                            );
+                                                );
 
-                                            // Arrêt d'arrivée du leg
-                                            items.push(
-                                                <div key={`transit-end-${i}`} className="flex gap-3 items-start mb-0">
-                                                    <div className="flex flex-col items-center w-8 flex-shrink-0">
-                                                        <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
-                                                    </div>
-                                                    <div className="flex-1">
-                                                        <p className="font-semibold text-sm text-slate-900 leading-tight">{leg.to?.name?.replace(/^[^,]+,\s*/, '')}</p>
-                                                        <p className="text-[12.5px] text-slate-600">{new Date(leg.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
-                                                    </div>
-                                                </div>
-                                            );
+                                                const nextLeg = allLegs[i + 1];
+                                                const nextIsTransitWithSameStop = nextLeg && nextLeg.mode !== 'WALK';
 
-                                            prevWasTransit = true;
-                                        }
-
-                                        if (isWalk && durationMin >= 1) {
-                                            // Marche entre deux transits = correspondance
-                                            items.push(
-                                                <div key={`walk-${i}`} className="flex gap-3 items-center">
-                                                    <div className="flex flex-col items-center w-8 flex-shrink-0">
-                                                        <div className="border-l-2 border-dashed border-slate-300" style={{ height: '28px', marginTop: '-10px' }} />
-                                                        <img src="/walk.svg" alt="marche" className="w-5 h-5 opacity-60 flex-shrink-0 my-3" />
-                                                        {i !== allLegs.length - 1 && (
-                                                            <div className="border-l-2 border-dashed border-slate-300" style={{ height: '28px', marginBottom: '12px' }} />
-                                                        )}
+                                                items.push(
+                                                    <div key={`transit-end-${i}`} className="flex gap-3 items-start mb-0">
+                                                        <div className="flex flex-col items-center w-8 flex-shrink-0">
+                                                            <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                                                            {nextIsTransitWithSameStop && (
+                                                                <div className="w-0 border-l-2 border-dashed border-slate-300" style={{ height: '24px' }} />
+                                                            )}
+                                                        </div>
+                                                        <div className={`flex-1 ${nextIsTransitWithSameStop ? 'mb-0' : ''}`}>
+                                                            <p className="font-semibold text-sm text-slate-900 leading-tight">{leg.to?.name?.replace(/^[^,]+,\s*/, '')}</p>
+                                                            <p className="text-[12.5px] text-slate-600">{new Date(leg.endTime).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
+                                                        </div>
                                                     </div>
-                                                    <p className="text-[13px] text-slate-600 mb-5">À pied · {formatDuration(durationMin)}</p>
-                                                </div>
-                                            );
-                                        }
-                                    });
+                                                );
 
-                                    return items;
-                                })()}
+                                                if (nextIsTransitWithSameStop) {
+                                                    items.push(<div key={`transfer-gap-${i}`} className="flex gap-3 items-center" style={{ minHeight: '8px' }} />);
+                                                }
+                                            }
+
+                                            if (isWalk && durationMin >= 1) {
+                                                items.push(
+                                                    <div key={`walk-${i}`} className="flex gap-3 items-center">
+                                                        <div className="flex flex-col items-center w-8 flex-shrink-0">
+                                                            <div className="border-l-2 border-dashed border-slate-300" style={{ height: '28px', marginTop: '-10px' }} />
+                                                            <img src="/walk.svg" alt="marche" className="w-5 h-5 opacity-60 flex-shrink-0 my-3" />
+                                                            {i !== allLegs.length - 1 && (
+                                                                <div className="border-l-2 border-dashed border-slate-300" style={{ height: '28px', marginBottom: '12px' }} />
+                                                            )}
+                                                        </div>
+                                                        <p className="text-[13px] text-slate-600 mb-5">À pied · {formatDuration(durationMin)}</p>
+                                                    </div>
+                                                );
+                                            }
+                                        });
+
+                                        return items;
+                                    })()}
+                                </div>
+                                <div style={{ height: '30vh' }} />
                             </div>
                         </div>
                     </>
                 )}
 
+                {/* Panneau infotrafic ligne */}
+                {selectedLineInfo && (() => {
+                    const lineDisruptions = Object.values(disruptionsRaw).filter(evt => {
+                        if (!evt.visibleTC) return false;
+                        const raw = (evt.listeLigne || '').toUpperCase();
+                        const match = raw.match(/(?:SEM:|[A-Z0-9]+_)(.+)$/);
+                        const evtLine = match ? match[1] : raw;
+                        return evtLine === selectedLineInfo;
+                    });
+
+                    return (
+                        <>
+                            <div
+                                className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${lineInfoOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                                onClick={() => { setLineInfoOpen(false); setTimeout(() => setSelectedLineInfo(null), 300); }}
+                            />
+                            <div
+                                className={`${lineInfoOpen ? 'translate-y-0' : 'translate-y-full'} fixed inset-x-0 bottom-0 z-50 rounded-t-3xl border border-slate-200 bg-white shadow-2xl transition-transform duration-300 flex flex-col`}
+                                style={{ height: `${lineInfoHeight}vh` }}
+                            >
+                                <div
+                                    className="flex-shrink-0 flex justify-center py-3 cursor-grab active:cursor-grabbing touch-none select-none"
+                                    onPointerDown={(e) => {
+                                        lineInfoDragStartY.current = e.clientY;
+                                        lineInfoDragStartHeight.current = lineInfoHeight;
+                                        e.currentTarget.setPointerCapture(e.pointerId);
+                                    }}
+                                    onPointerMove={(e) => {
+                                        if (lineInfoDragStartY.current === null) return;
+                                        const deltaPx = lineInfoDragStartY.current - e.clientY;
+                                        const deltaVh = (deltaPx / window.innerHeight) * 100;
+                                        const maxVh = ((window.innerHeight - 20) / window.innerHeight) * 100;
+                                        const newHeight = Math.min(maxVh, Math.max(20, lineInfoDragStartHeight.current + deltaVh));
+                                        setLineInfoHeight(newHeight);
+                                    }}
+                                    onPointerUp={() => {
+                                        lineInfoDragStartY.current = null;
+                                        lineInfoDragStartHeight.current = null;
+                                    }}
+                                >
+                                    <div className="h-1.5 w-16 rounded-full bg-slate-300" />
+                                </div>
+
+                                <div className="overflow-y-auto flex-1 px-4 pb-8">
+                                    <div className="flex items-center gap-3 mb-4">
+                                        <LineIcon lineKey={selectedLineInfo} size="w-10 h-10" />
+                                        <div>
+                                            <p className="text-xs uppercase tracking-widest text-slate-400">Infotrafic</p>
+                                            <h2 className="text-lg font-bold text-slate-900">Ligne {selectedLineInfo}</h2>
+                                        </div>
+                                        <button onClick={() => { setLineInfoOpen(false); setTimeout(() => setSelectedLineInfo(null), 300); }} className="ml-auto text-slate-400 hover:text-slate-700 text-xl font-bold">×</button>
+                                    </div>
+                                    {lineDisruptions.length === 0 ? (
+                                        <p className="text-sm text-slate-500 text-center py-6">Aucune perturbation en cours.</p>
+                                    ) : (
+                                        <div className="flex flex-col gap-2">
+                                            {lineDisruptions.map((evt, i) => <DisruptionItem key={i} evt={evt} />)}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </>
+                    );
+                })()}
+
+                {/* Panneau recherche */}
                 <div className={`mt-4 ${inputsOpen ? 'translate-y-0' : 'translate-y-full'} fixed bottom-0 left-0 right-0 z-20 border-t border-gray-300 bg-white p-4 shadow-xl transition-transform duration-300`}>
                     <div className="flex justify-between items-center mb-3">
                         <span className="font-bold">Recherche</span>
@@ -666,8 +893,8 @@ export default function FastResearch() {
                     </div>
 
                     <div className="space-y-2 mt-4 flex flex-col items-stretch">
-                        <button onClick={() => search(0)} disabled={loading} className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg">
-                            {loading ? 'Recherche...' : 'Rechercher'}
+                        <button onClick={() => search(0)} disabled={loading || !stopsLoaded} className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg">
+                            {!stopsLoaded ? 'Chargement des arrêts...' : loading ? 'Recherche...' : 'Rechercher'}
                         </button>
                         <button onClick={reset} className="w-full px-4 py-3 bg-gray-300 text-black rounded-lg">
                             Réinitialiser
