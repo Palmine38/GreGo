@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // dev version
+=======
+// prod version
+>>>>>>> e14dd44741f560a59c2b3a7b1eda54f23ab6822b
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -178,7 +182,7 @@ export default function MesTrajetsTest() {
 
 
 
-    const DEBUG = false; // Affiche les logs détaillés pour le développement
+    const DEBUG = true; // Affiche les logs détaillés pour le développement
 
     // État pour les icones des lignes chargées depuis linesicons.txt
     const [lineIcons, setLineIcons] = useState({});
