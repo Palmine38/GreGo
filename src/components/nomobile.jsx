@@ -1,5 +1,4 @@
 function NoMobile() {
-
     return (
         <div style={{
             display: 'flex',
@@ -15,7 +14,6 @@ function NoMobile() {
             />
         </div>
     )
-
 }
 
 export default NoMobile
