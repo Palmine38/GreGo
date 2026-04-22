@@ -1,3 +1,5 @@
+// prod version
+
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import Navbar from './navbar.jsx';
@@ -89,7 +91,7 @@ export default function MesTrajetsTest() {
 
 
 
-    const DEBUG = false; // Affiche les logs détaillés pour le développement
+    const DEBUG = true; // Affiche les logs détaillés pour le développement
 
     // État pour les icones des lignes chargées depuis linesicons.txt
     const [lineIcons, setLineIcons] = useState({});
