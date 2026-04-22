@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-// dev version
-=======
-// prod version
->>>>>>> e14dd44741f560a59c2b3a7b1eda54f23ab6822b
+
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
