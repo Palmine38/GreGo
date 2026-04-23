@@ -627,12 +627,15 @@ export default function FastResearch() {
                 </div>
 
                 {!inputsOpen && !selectedJourney && (
-                    <div className="fixed bottom-8 left-1 right-1 z-50 bg-gray-100 border-t border-gray-300 pt-2 shadow-md">
+                    <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 px-4 pt-3 pb-6 shadow-lg">
                         <button
-                            className="w-full py-3 bg-blue-600 text-white rounded-lg"
+                            className="w-full py-3 bg-blue-600 text-white rounded-lg flex items-center justify-center gap-2"
                             onClick={openInputs}
                         >
-                            ^ Ouvrir la recherche
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 15.75 7.5-7.5 7.5 7.5" />
+                            </svg>
+                            Ouvrir la recherche
                         </button>
                     </div>
                 )}
@@ -641,7 +644,7 @@ export default function FastResearch() {
                 {selectedJourney && (
                     <>
                         <div
-                            className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${journeyDetailsOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                            className={`fixed inset-0 z-40 bg-black/40  transition-opacity duration-300 ${journeyDetailsOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                             onClick={closeJourneyDetails}
                         />
                         <div
@@ -840,7 +843,7 @@ export default function FastResearch() {
                     return (
                         <>
                             <div
-                                className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${lineInfoOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                                className={`fixed inset-0 z-40 bg-black/40  transition-opacity duration-300 ${lineInfoOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                                 onClick={() => { setLineInfoOpen(false); setTimeout(() => setSelectedLineInfo(null), 300); }}
                             />
                             <div
@@ -918,11 +921,23 @@ export default function FastResearch() {
                 })()}
 
                 {/* Panneau recherche */}
-                <div className={`mt-4 ${inputsOpen ? 'translate-y-0' : 'translate-y-full'} fixed bottom-0 left-0 right-0 z-20 border-t border-gray-300 bg-white p-4 shadow-xl transition-transform duration-300`}>
+                <div
+                    className={`fixed inset-0 z-40 bg-black/40 transition-opacity duration-300 ${inputsOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                    onClick={cancel}
+                />
+                <div className={`${inputsOpen ? 'translate-y-0' : 'translate-y-full'} fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl border-t border-gray-300 bg-white p-4 shadow-xl transition-transform duration-300`}>
                     <div className="flex justify-between items-center mb-3">
                         <span className="font-bold">Recherche</span>
                         <button className="text-gray-600" onClick={() => inputsOpen ? cancel() : openInputs()}>
-                            {inputsOpen ? 'v Cacher' : '^ Ouvrir'}
+                            {inputsOpen ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-6">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                                </svg>
+                            ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-6">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 15.75 7.5-7.5 7.5 7.5" />
+                                </svg>
+                            )}
                         </button>
                     </div>
 

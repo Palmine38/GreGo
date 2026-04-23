@@ -183,7 +183,7 @@ export default function MesTrajetsTest() {
 
 
 
-    const DEBUG = true; // Affiche les logs détaillés pour le développement
+    const DEBUG = false; // Affiche les logs détaillés pour le développement
 
     // État pour les icones des lignes chargées depuis linesicons.txt
     const [lineIcons, setLineIcons] = useState({});
@@ -313,7 +313,7 @@ export default function MesTrajetsTest() {
 
     useEffect(() => {
         if (stopsLoaded && loadedFromStorage) {
-            const activeTrajets = loadedTrajetsRef.current;
+            const activeTrajets = trajetsRef.current;
             if (!activeTrajets) return;
             ['T1', 'T2', 'T3'].forEach(t => {
                 const trajet = activeTrajets[t];
@@ -329,7 +329,7 @@ export default function MesTrajetsTest() {
 
         const interval = setInterval(() => {
             console.log('🔄 Re-recherche automatique toutes les 1 min...');
-            const activeTrajets = loadedTrajetsRef.current || trajetsRef.current;
+            const activeTrajets = trajetsRef.current;
             ['T1', 'T2', 'T3'].forEach(t => {
                 const trajet = activeTrajets[t];
                 if (trajet?.depName && trajet?.arrName) {
@@ -1269,12 +1269,15 @@ export default function MesTrajetsTest() {
                 </div>
 
                 {!inputsOpen && !selectedJourney && (
-                    <div className="fixed bottom-8 left-1 right-1 z-50 bg-gray-100 border-t border-gray-300 pt-2 shadow-md">
+                    <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-200 px-4 pt-3 pb-6 shadow-lg">
                         <button
-                            className="w-full py-3 bg-blue-600 text-white rounded-lg"
+                            className="w-full py-3 bg-blue-600 text-white rounded-lg flex items-center justify-center gap-2"
                             onClick={openInputs}
                         >
-                            ^ Ouvrir la recherche
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-4">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 15.75 7.5-7.5 7.5 7.5" />
+                            </svg>
+                            Ouvrir la recherche
                         </button>
                     </div>
                 )}
@@ -1282,7 +1285,7 @@ export default function MesTrajetsTest() {
                 {selectedJourney && (
                     <>
                         <div
-                            className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${journeyDetailsOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                            className={`fixed inset-0 z-40 bg-black/40 transition-opacity duration-300 ${journeyDetailsOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                             onClick={closeJourneyDetails}
                         />
                         <div
@@ -1336,7 +1339,7 @@ export default function MesTrajetsTest() {
                                     setIsDraggingDetails(false);
                                 }}
                             >
-                                <div className="h-1.5 w-16 rounded-full bg-slate-300" />
+                                <div className="h-1 w-[75px] rounded-full bg-slate-300" />
                             </div>
 
                             {/* Contenu scrollable */}
@@ -1513,14 +1516,16 @@ export default function MesTrajetsTest() {
                 )}
 
                 {/* Menu Rename */}
-                <div className={`mt-4 ${renameOpen ? 'translate-y-0' : 'translate-y-full'} fixed bottom-0 left-0 right-0 z-50 border-t border-gray-300 bg-white p-4 shadow-xl transition-transform duration-300`}>
+                <div className={`${renameOpen ? 'translate-y-0' : 'translate-y-full'} fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl border-t border-gray-300 bg-white p-4 shadow-xl transition-transform duration-300`}>
                     <div className="flex justify-between items-center mb-3">
                         <span className="font-bold">Renommer le trajet {currentTrajet}</span>
                         <button className="text-gray-600" onClick={() => {
                             setRenameOpen(false);
                             setInputsOpen(inputsOpenBeforeRenameRef.current);
                         }}>
-                            v Cacher
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-6">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                            </svg>
                         </button>
                     </div>
                     <div className="space-y-3">
@@ -1560,11 +1565,23 @@ export default function MesTrajetsTest() {
                 </div>
 
                 {/* Menu Recherche */}
-                <div className={`mt-4 ${inputsOpen ? 'translate-y-0' : 'translate-y-full'} fixed bottom-0 left-0 right-0 z-20 border-t border-gray-300 bg-white p-4 shadow-xl transition-transform duration-300`}>
+                <div
+                    className={`fixed inset-0 z-40 bg-black/40 transition-opacity duration-300 ${inputsOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                    onClick={cancel}
+                />
+                <div className={`${inputsOpen ? 'translate-y-0' : 'translate-y-full'} fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl border-t border-gray-300 bg-white p-4 shadow-xl transition-transform duration-300`}>
                     <div className="flex justify-between items-center mb-3">
                         <span className="font-bold">Configuration - {trajets[currentTrajet]?.name || currentTrajet}</span>
                         <button className="text-gray-600" onClick={() => { const newState = !inputsOpen; if (newState) { openInputs(); } else { cancel(); } }}>
-                            {inputsOpen ? 'v Cacher' : '^ Ouvrir'}
+                            {inputsOpen ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-6">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                                </svg>
+                            ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-6">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 15.75 7.5-7.5 7.5 7.5" />
+                                </svg>
+                            )}
                         </button>
                     </div>
 
@@ -1658,7 +1675,7 @@ export default function MesTrajetsTest() {
                     return (
                         <>
                             <div
-                                className={`fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300 ${lineInfoOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                                className={`fixed inset-0 z-40 bg-black/40 transition-opacity duration-300 ${lineInfoOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                                 onClick={() => {
                                     setLineInfoOpen(false);
                                     setTimeout(() => setSelectedLineInfo(null), 300);
@@ -1717,7 +1734,7 @@ export default function MesTrajetsTest() {
                                         setIsDraggingLineInfo(false);
                                     }}
                                 >
-                                    <div className="h-1.5 w-16 rounded-full bg-slate-300" />
+                                    <div className="h-1 w-[75px] rounded-full bg-slate-300" />
                                 </div>
 
                                 {/* Contenu scrollable */}

@@ -170,14 +170,22 @@ export default function Settings({ settingsOpen, setSettingsOpen, onSettingsChan
                     border-radius: 3px;
                 }
             `}</style>
-            <div className={`${settingsOpen ? 'translate-y-0' : 'translate-y-full'} fixed bottom-0 left-0 right-0 border-t border-gray-300 bg-white p-4 shadow-xl transition-transform duration-300 sm:relative sm:translate-y-0 sm:border-none sm:shadow-none sm:p-0`} style={{ zIndex: 60 }}>
+            <div className={`${settingsOpen ? 'translate-y-0' : 'translate-y-full'} fixed bottom-0 left-0 right-0 rounded-t-3xl border-t border-gray-300 bg-white p-4 shadow-xl transition-transform duration-300 sm:relative sm:translate-y-0 sm:border-none sm:shadow-none sm:p-0`} style={{ zIndex: 60 }}>
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-bold">Paramètres</h2>
                     <button
-                        className="text-gray-600 hover:text-gray-900 text-lg"
+                        className="text-gray-600 hover:text-gray-900"
                         onClick={() => setSettingsOpen(!settingsOpen)}
                     >
-                        {settingsOpen ? 'v Cacher' : '^ Ouvrir'}
+                        {settingsOpen ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-6">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                            </svg>
+                        ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor" className="size-6">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 15.75 7.5-7.5 7.5 7.5" />
+                            </svg>
+                        )}
                     </button>
                 </div>
 
