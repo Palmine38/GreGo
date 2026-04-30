@@ -112,7 +112,7 @@ public/
 - Menu hamburger pour mobile
 - Design responsive
 
-### Settings     (fichier *settings.jsx*t)
+### Settings     (fichier *settings.jsx*)
 - Accessibilité PMR
 - Vitesse de marche
 - Nombre de trajets retournés
