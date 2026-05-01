@@ -53,8 +53,8 @@
 
 1. Clonez le repository :
 ```bash
-git clone https://github.com/Palmine38/Web-TAG-express.git
-cd Web-TAG-express
+git clone https://github.com/Palmine38/GreGo.git
+cd GreGo
 ```
 
 2. Installez les dépendances :
