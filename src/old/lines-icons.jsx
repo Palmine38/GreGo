@@ -1,4 +1,3 @@
-/* @refresh reset */
 import React, { useEffect, useState } from "react";
 
 export const LINE_COLORS = {
@@ -18,12 +17,14 @@ export const LINE_COLORS = {
   C13: "#EF7C00",
   C14: "#EF7C00",
 };
-
+// Cache global pour les données des lignes
 const lineDataCache = new Map();
 let routesPromise = null;
 
+// Charger une seule fois toutes les routes
 const fetchAllRoutes = async () => {
   if (routesPromise) return routesPromise;
+
   routesPromise = fetch(
     "https://data.mobilites-m.fr/api/routers/default/index/routes",
   )
@@ -32,45 +33,30 @@ const fetchAllRoutes = async () => {
       console.error("Erreur chargement routes:", err);
       return [];
     });
+
   return routesPromise;
-};
-
-const SIZE_MAP_PX = {
-  "w-4 h-4": 16,
-  "w-5 h-5": 20,
-  "w-6 h-6": 24,
-  "w-8 h-8": 32,
-  "w-10 h-10": 40,
-  "w-12 h-12": 48,
-};
-
-const FONT_MAP = {
-  "w-4 h-4": 10,
-  "w-5 h-5": 12,
-  "w-6 h-6": 16,
-  "w-8 h-8": 20,
-  "w-10 h-10": 24,
-  "w-12 h-12": 28,
 };
 
 export default function LineIcon({ lineKey = "", size = "w-6 h-6" }) {
   const [lineData, setLineData] = useState(null);
 
-  const sizePx = SIZE_MAP_PX[size] || 24;
-  const fontSize = FONT_MAP[size] || 16;
-
   useEffect(() => {
     const loadLineData = async () => {
       if (!lineKey) return;
+
+      // Vérifier le cache
       if (lineDataCache.has(lineKey)) {
         setLineData(lineDataCache.get(lineKey));
         return;
       }
+
       try {
         const routes = await fetchAllRoutes();
-        const route = routes.find(
-          (r) => (r.shortName || "").toUpperCase() === lineKey.toUpperCase(),
-        );
+        const route = routes.find((r) => {
+          const shortName = (r.shortName || "").toUpperCase();
+          return shortName === lineKey.toUpperCase();
+        });
+
         const data = route
           ? {
               shortName: route.shortName || lineKey,
@@ -84,31 +70,39 @@ export default function LineIcon({ lineKey = "", size = "w-6 h-6" }) {
               color: LINE_COLORS[lineKey] || "#000000",
               type: "",
             };
+
         lineDataCache.set(lineKey, data);
         setLineData(data);
       } catch (error) {
         console.error("Erreur lors du chargement des données de ligne:", error);
-        const data = { shortName: lineKey, color: "#000000", type: "" };
+        const data = {
+          shortName: lineKey,
+          color: "#000000",
+          type: "",
+        };
         lineDataCache.set(lineKey, data);
         setLineData(data);
       }
     };
+
     loadLineData();
   }, [lineKey]);
 
   if (!lineData) {
-    return (
-      <div
-        style={{
-          width: sizePx,
-          height: sizePx,
-          backgroundColor: "#D1D5DB",
-          borderRadius: "50%",
-        }}
-      />
-    );
+    return <div className={`${size} bg-gray-300 rounded-full`}></div>;
   }
 
+  // Déterminer la taille en pixels pour le calcul du texte
+  const sizeMap = {
+    "w-4 h-4": 10,
+    "w-5 h-5": 12,
+    "w-6 h-6": 16,
+    "w-8 h-8": 20,
+    "w-10 h-10": 24,
+    "w-12 h-12": 28,
+  };
+
+  const fontSize = sizeMap[size] || 16;
   const isRound = ["TRAM", "CHRONO_PERI", "CHRONO"].includes(
     lineData.type?.toUpperCase(),
   );
@@ -116,56 +110,19 @@ export default function LineIcon({ lineKey = "", size = "w-6 h-6" }) {
 
   return (
     <div
+      className={`${size} flex items-center justify-center flex-shrink-0`}
       style={{
-        width: sizePx,
-        height: sizePx,
         backgroundColor: lineData.color,
         borderRadius: isRound ? "50%" : "20%",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
       }}
       title={lineData.shortName}
     >
       <span
-        style={{
-          fontSize: `${fontSize - 4}px`,
-          fontWeight: "bold",
-          lineHeight: 1,
-          color: isCLine ? "black" : "white",
-        }}
+        className={`font-bold leading-none ${isCLine ? "text-black" : "text-white"}`}
+        style={{ fontSize: `${fontSize - 4}px` }}
       >
         {lineData.shortName}
       </span>
     </div>
   );
 }
-
-export const preloadLineData = async (lineKeys) => {
-  if (!lineKeys.length) return;
-  const routes = await fetchAllRoutes();
-  for (const lineKey of lineKeys) {
-    if (lineDataCache.has(lineKey)) continue;
-    const route = routes.find(
-      (r) => (r.shortName || "").toUpperCase() === lineKey.toUpperCase(),
-    );
-    const data = route
-      ? {
-          shortName: route.shortName || lineKey,
-          color:
-            LINE_COLORS[lineKey] ||
-            (route.color ? "#" + route.color : "#000000"),
-          type: route.type || "",
-        }
-      : {
-          shortName: lineKey,
-          color: LINE_COLORS[lineKey] || "#000000",
-          type: "",
-        };
-    lineDataCache.set(lineKey, data);
-  }
-};
-
-export const getLineDataFromCache = (lineKey) =>
-  lineDataCache.get(lineKey) ?? null;

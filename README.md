@@ -5,10 +5,8 @@
 [![Vite](https://img.shields.io/badge/Vite-8.0.1-646CFF.svg)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.2.2-38B2AC.svg)](https://tailwindcss.com/)
 
-**Release 2.0 déployée !**
-
 > Une application web moderne faite pour Mobile seulement à l'heure actuelle pour gérer et rechercher des trajets de transport utilisant le système de transit TAG (Transports de l'Agglomération Grenobloise).
-> Cette app est toujours en développement, certains bugs peuvent donc apparaître. Merci de les report dans ```issues``` lorsque cela arrive.
+> Cette app est toujours en développement, certains bugs peuvent donc apparaître. Merci de les report dans `issues` lorsque cela arrive.
 
 > ⚠️ : les itinéraires peuvent être imprécis en fonction de la ligne. (ex: une ligne de tram aura des itinéraires plus précis qu'une ligne de bus). Cela est dû au traffic et aux imprévus de la route, qui peuvent donc décaler les horaires théoriques.
 
@@ -52,22 +50,28 @@
 ### Installation
 
 1. Clonez le repository :
+
 ```bash
 git clone https://github.com/Palmine38/Web-TAG-express.git
 cd Web-TAG-express
 ```
 
 2. Installez les dépendances :
+
 ```bash
 npm install
+npm install motion
+npm install react-modal-sheet
 ```
 
 3. Lancez le serveur de développement :
+
 ```bash
 npm run dev
 ```
 
 4. Buildez pour la production :
+
 ```bash
 npm run build
 ```
@@ -75,54 +79,73 @@ npm run build
 ## Structure du Projet
 
 ```
-src/
-├── components/
-│   ├── mestrajets-test.jsx         # Composant principal de gestion des trajets
-│   ├── fast-research.jsx           # Page de recherche rapide
-│   ├── navbar.jsx                  # Barre de navigation
-│   ├── mestrajets.jsx              # Fichier obsolete pour la gestion des trajets.
-│   ├── settings.jsx                # Settings
-│   ├── lines-icons.jsx             # Génération des icones de ligne.
-│
-├── App.jsx                         # Composant principal
-├── App.css                         # Styles globaux
-└── main.jsx                        # Point d'entrée
+GreGo
+└─ src
+   ├─ App.css
+   ├─ App.jsx
+   ├─ components
+   │  ├─ DisruptionItem.jsx
+   │  ├─ JourneyCard.jsx
+   │  ├─ JourneyDetailsSheet.jsx
+   │  ├─ JourneyResultsHeader.jsx
+   │  ├─ JourneyTimeline.jsx
+   │  ├─ LineInfoSheet.jsx
+   │  ├─ lines-icons.jsx
+   │  └─ SearchSheet.jsx
+   ├─ hooks
+   │  ├─ useCurrentTime.js
+   │  ├─ useDisruptions.js
+   │  ├─ useLineColors.js
+   │  ├─ useSettings.js
+   │  └─ useStops.js
+   ├─ index.css
+   ├─ lines-icons.jsx
+   ├─ main.jsx
+   ├─ fast-research.jsx
+   ├─ mes-trajets.jsx
+   ├─ navbar.jsx
+   ├─ nomobile.jsx
+   ├─ settings.jsx
+   └─ utils
+      └─ journey.js
 
-public/
-├── logos/                          # Dossier qui contient les logos de GreGo
-│
-└── Fichiers image                  # Favicons, apple-touch icons...
 ```
 
 ## Composants Principaux
 
-### Mes Trajets     (fichier *mestrajets-test.jsx*)
+### Mes Trajets (fichier _mestrajets.jsx_)
+
 - Gérez jusqu'à 3 trajets sauvegardés
 - Visualisez et modifiez les détails des trajets (départ, arrivée, ligne)
 - Sauvegarde automatique avec retour visuel
 - Persistance des données entre les sessions
 
-### Recherche Rapide     (fichier *fast-research.jsx*)
+### Recherche Rapide (fichier _fast-research.jsx_)
+
 - Recherche ponctuelle sans sauvegarde
 - Mêmes capacités de recherche que les trajets sauvegardés
 - Affichage rapide des résultats
 
-### Barre de Navigation     (fichier *navbar.jsx*)
+### Barre de Navigation (fichier _navbar.jsx_)
+
 - Navigation entre les pages
 - Menu hamburger pour mobile
 - Design responsive
 
-### Settings     (fichier *settings.jsx*t)
+### Settings (fichier *settings.jsx*t)
+
 - Accessibilité PMR
 - Vitesse de marche
 - Nombre de trajets retournés
 
-### Lines Icons     (fichier *lines-icons.jsx*)
+### Lines Icons (fichier _lines-icons.jsx_)
+
 - Récupère couleur de lignes et génère icones.
 
 ## Intégration API
 
 L'application utilise l'API ouverte TAG Mobilités :
+
 - **URL de Base** : `https://data.mobilites-m.fr/api/routers/default`
 - Récupère les trajets disponibles, arrêts et itinéraires
 - Données de transport en temps réel
@@ -130,14 +153,17 @@ L'application utilise l'API ouverte TAG Mobilités :
 ## Fonctionnalités en Détail
 
 ### Sauvegarde de Trajets
+
 - Enregistrez les préférences de départ, arrivée et ligne
 - Restauration automatique au rechargement de la page
 - Boutons avec codes couleur pour trajets sauvegardés/non-sauvegardés
 
 ### Filtrage de Recherche
-- Filtrez par ligne spécifique *(falcutatif)*
+
+- Filtrez par ligne spécifique _(falcutatif)_
 
 ### Gestion d'État
+
 - Hooks React pour la gestion d'état
 - localStorage pour la persistance
 - Cache séparé pour les résultats de recherche par trajet
@@ -164,3 +190,158 @@ Créé par [Palmine38](https://github.com/Palmine38) avec la collaboration de [A
 ## Contribution
 
 Les contributions sont les bienvenues ! N'hésitez pas à soumettre des pull requests ou ouvrir des issues pour les bugs et demandes de fonctionnalités.
+
+```
+GreGo
+├─ .screenshots
+│  ├─ img1.png
+│  ├─ img2.png
+│  ├─ img3.png
+│  └─ img4.png
+├─ eslint.config.js
+├─ index.html
+├─ localStorage-example.json
+├─ package-lock.json
+├─ package.json
+├─ postcss.config.js
+├─ public
+│  ├─ apple-touch-icon.png
+│  ├─ favicon-16x16.png
+│  ├─ favicon-32x32.png
+│  ├─ favicon.ico
+│  ├─ favicon.png
+│  ├─ favicon.svg
+│  ├─ grelines.png
+│  ├─ icons.svg
+│  ├─ logos
+│  │  ├─ apple-touch-icon-dark.png
+│  │  ├─ dark_no_bg_banner.png
+│  │  └─ light_no_bg_banner.png
+│  ├─ manifest.json
+│  ├─ nomobile.png
+│  ├─ robots.txt
+│  ├─ sitemap.xml
+│  └─ walk.svg
+├─ README.md
+├─ src
+│  ├─ App.css
+│  ├─ App.jsx
+│  ├─ assets
+│  │  ├─ hero.png
+│  │  ├─ react.svg
+│  │  └─ vite.svg
+│  ├─ components
+│  │  ├─ DisruptionItem.jsx
+│  │  ├─ JourneyCard.jsx
+│  │  ├─ JourneyDetailsSheet.jsx
+│  │  ├─ JourneyResultsHeader.jsx
+│  │  ├─ JourneyTimeline.jsx
+│  │  ├─ LineInfoSheet.jsx
+│  │  ├─ lines-icons.jsx
+│  │  └─ SearchSheet.jsx
+│  ├─ fast-research.jsx
+│  ├─ hooks
+│  │  ├─ useCurrentTime.js
+│  │  ├─ useDisruptions.js
+│  │  ├─ useLineColors.js
+│  │  ├─ useSettings.js
+│  │  └─ useStops.js
+│  ├─ index.css
+│  ├─ lines-icons.jsx
+│  ├─ main.jsx
+│  ├─ mes-trajets.jsx
+│  ├─ navbar.jsx
+│  ├─ nomobile.jsx
+│  ├─ old
+│  │  ├─ fast-research.jsx
+│  │  ├─ lines-icons.jsx
+│  │  ├─ mestrajets-test.jsx
+│  │  ├─ mestrajets.jsx
+│  │  ├─ navbar.jsx
+│  │  ├─ nomobile.jsx
+│  │  └─ settings.jsx
+│  ├─ settings.jsx
+│  └─ utils
+│     └─ journey.js
+├─ tailwind.config.js
+├─ vercel.json
+└─ vite.config.js
+
+```
+```
+GreGo
+├─ .screenshots
+│  ├─ img1.png
+│  ├─ img2.png
+│  ├─ img3.png
+│  └─ img4.png
+├─ eslint.config.js
+├─ index.html
+├─ localStorage-example.json
+├─ package-lock.json
+├─ package.json
+├─ postcss.config.js
+├─ public
+│  ├─ apple-touch-icon.png
+│  ├─ favicon-16x16.png
+│  ├─ favicon-32x32.png
+│  ├─ favicon.ico
+│  ├─ favicon.png
+│  ├─ favicon.svg
+│  ├─ grelines.png
+│  ├─ icons.svg
+│  ├─ logos
+│  │  ├─ apple-touch-icon-dark.png
+│  │  ├─ dark_no_bg_banner.png
+│  │  └─ light_no_bg_banner.png
+│  ├─ manifest.json
+│  ├─ nomobile.png
+│  ├─ robots.txt
+│  ├─ sitemap.xml
+│  └─ walk.svg
+├─ README.md
+├─ src
+│  ├─ App.css
+│  ├─ App.jsx
+│  ├─ assets
+│  │  ├─ hero.png
+│  │  ├─ react.svg
+│  │  └─ vite.svg
+│  ├─ components
+│  │  ├─ DisruptionItem.jsx
+│  │  ├─ JourneyCard.jsx
+│  │  ├─ JourneyDetailsSheet.jsx
+│  │  ├─ JourneyResultsHeader.jsx
+│  │  ├─ JourneyTimeline.jsx
+│  │  ├─ LineInfoSheet.jsx
+│  │  ├─ lines-icons.jsx
+│  │  └─ SearchSheet.jsx
+│  ├─ fast-research.jsx
+│  ├─ hooks
+│  │  ├─ useCurrentTime.js
+│  │  ├─ useDisruptions.js
+│  │  ├─ useLineColors.js
+│  │  ├─ useSettings.js
+│  │  └─ useStops.js
+│  ├─ index.css
+│  ├─ lines-icons.jsx
+│  ├─ main.jsx
+│  ├─ mes-trajets.jsx
+│  ├─ navbar.jsx
+│  ├─ nomobile.jsx
+│  ├─ old
+│  │  ├─ fast-research.jsx
+│  │  ├─ lines-icons.jsx
+│  │  ├─ mestrajets-test.jsx
+│  │  ├─ mestrajets.jsx
+│  │  ├─ navbar.jsx
+│  │  ├─ nomobile.jsx
+│  │  └─ settings.jsx
+│  ├─ settings.jsx
+│  └─ utils
+│     └─ journey.js
+├─ tailwind.config.js
+├─ vercel.json
+└─ vite.config.js
+
+```
