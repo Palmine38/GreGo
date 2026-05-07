@@ -5,7 +5,7 @@ import { MapSheet } from "./MapSheet.jsx";
 import { Source, Layer } from "react-map-gl/maplibre";
 import { Sheet } from "react-modal-sheet";
 import LineIcon from "./lines-icons.jsx";
-import { NearestStopsSheet } from "./NearestStops.jsx";
+import { NearestStopsSheet } from "./nearestStops.jsx";
 
 const MAPTILER_STYLE_URL =
   "https://api.maptiler.com/maps/019d0d02-359b-7f4b-a797-bdeabca9dce3/style.json?key=7TQErbyvEqFlis3QMmSl";
