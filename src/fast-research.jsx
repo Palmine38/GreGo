@@ -512,6 +512,10 @@ export default function FastResearch() {
           onClose={closeJourneyDetails}
           lineColors={lineColors}
           getLineDisruptions={getLineDisruptions}
+          onLineClick={(lk) => {
+            setSelectedLineInfo(lk);
+            requestAnimationFrame(() => setLineInfoOpen(true));
+          }}
         />
 
         {/* Panneau infotrafic ligne */}

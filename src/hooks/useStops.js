@@ -30,26 +30,40 @@ export function useStops() {
               const clusters = await r.json();
               clusters.forEach((stop) => {
                 const key = stop.name.toLowerCase();
+
+                // list : tous les stops, dédup par id après
+                list.push({
+                  id: stop.id,
+                  code: stop.code,
+                  name: stop.name,
+                  lat: stop.lat,
+                  lon: stop.lon,
+                });
+
+                // newMap : un seul entry par nom pour la recherche texte
                 if (!newMap[key]) {
-                  list.push({
-                    id: stop.id,
-                    code: stop.code,
-                    name: stop.name,
-                    lat: stop.lat,
-                    lon: stop.lon,
-                  });
+                  newMap[key] = [
+                    `${stop.id}::${stop.lat},${stop.lon}`,
+                    stop.name,
+                    stop.code,
+                  ];
                 }
-                newMap[key] = [
-                  `${stop.id}::${stop.lat},${stop.lon}`,
-                  stop.name,
-                  stop.code,
-                ];
               });
             } catch {}
           }),
         );
 
-        setStopsList(list);
+        const seen = new Set();
+        const dedupedList = [];
+        for (const stop of list) {
+          const key = `${stop.id}::${stop.lat},${stop.lon}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            dedupedList.push(stop);
+          }
+        }
+
+        setStopsList(dedupedList);
         setStopsMap(newMap);
       } catch {
         setStopsMap({});

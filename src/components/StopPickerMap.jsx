@@ -55,7 +55,43 @@ async function forwardGeocode(query) {
   }
 }
 
-export default function StopPickerMap({ stops, onSelect, onClose, target }) {
+async function autocompleteGeocode(query) {
+  if (!query || query.length < 2) return [];
+  try {
+    const res = await fetch(
+      `https://api.maptiler.com/geocoding/${encodeURIComponent(query)}.json?key=7TQErbyvEqFlis3QMmSl&language=fr&bbox=5.08,44.70,6.40,45.50&proximity=5.74892,45.18501&limit=6`,
+    );
+    const json = await res.json();
+    return (json.features || [])
+      .filter((f) => {
+        // Filtre département 38 (Isère) via le context
+        const ctx = (f.context || []).map((c) => c.text || "").join(" ");
+        return (
+          ctx.includes("Isère") ||
+          ctx.includes("38") ||
+          f.place_name?.includes("Isère")
+        );
+      })
+      .map((f) => {
+        const [lon, lat] = f.center;
+        const parts = (f.place_name || "").split(",");
+        const name = parts.slice(0, 2).join(",").trim();
+        return { name, lat, lon, full: f.place_name };
+      });
+  } catch {
+    return [];
+  }
+}
+
+export default function StopPickerMap({
+  stops,
+  onSelect,
+  onClose,
+  target,
+  openSearchOnMount = false,
+  depCoords,
+  arrCoords,
+}) {
   const mapRef = useRef(null);
   const [bounds, setBounds] = useState(null);
   const [zoom, setZoom] = useState(13);
@@ -73,6 +109,8 @@ export default function StopPickerMap({ stops, onSelect, onClose, target }) {
   const [walkRoute, setWalkRoute] = useState(null);
   const [walkLoading, setWalkLoading] = useState(false);
   const [showMoreNearest, setShowMoreNearest] = useState(false);
+  const [searchSuggestions, setSearchSuggestions] = useState([]);
+  const searchDebounceRef = useRef(null);
 
   const showLabels = zoom >= 14;
   const SNAP_THRESHOLD_DEG = 0.00018;
@@ -106,6 +144,13 @@ export default function StopPickerMap({ stops, onSelect, onClose, target }) {
 
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
+  }, []);
+
+  useEffect(() => {
+    if (openSearchOnMount) {
+      const t = setTimeout(() => setSearchSheetOpen(true), 350);
+      return () => clearTimeout(t);
+    }
   }, []);
 
   const handleClose = () => {
@@ -432,9 +477,9 @@ export default function StopPickerMap({ stops, onSelect, onClose, target }) {
                   onClick={handleMapClick}
                   cursor="crosshair"
                 >
-                  {visibleStops.map((stop) => (
+                  {visibleStops.map((stop, i) => (
                     <Marker
-                      key={stop.id}
+                      key={`${stop.id}-${stop.lat}-${stop.lon}`}
                       longitude={stop.lon}
                       latitude={stop.lat}
                     >
@@ -531,6 +576,126 @@ export default function StopPickerMap({ stops, onSelect, onClose, target }) {
                         }}
                       />
                     </Source>
+                  )}
+                  {depCoords && (
+                    <Marker longitude={depCoords.lon} latitude={depCoords.lat}>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          pointerEvents: "none",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 13,
+                            height: 13,
+                            borderRadius: "50%",
+                            backgroundColor: "#22c55e",
+                            border: "2px solid white",
+                            boxShadow: "0 2px 4px rgba(0,0,0,0.25)",
+                          }}
+                        />
+                        {depCoords.name && (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 600,
+                              color: "#1e293b",
+                              backgroundColor: "rgba(255,255,255,0.92)",
+                              padding: "1px 5px",
+                              borderRadius: 4,
+                              marginTop: 2,
+                              whiteSpace: "nowrap",
+                              boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 9,
+                                opacity: 0.6,
+                                letterSpacing: "0.05em",
+                              }}
+                            >
+                              Départ
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 10,
+                                letterSpacing: "0.03em",
+                                marginTop: -4,
+                              }}
+                            >
+                              {depCoords.name}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    </Marker>
+                  )}
+                  {arrCoords && (
+                    <Marker longitude={arrCoords.lon} latitude={arrCoords.lat}>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          alignItems: "center",
+                          pointerEvents: "none",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 13,
+                            height: 13,
+                            borderRadius: "50%",
+                            backgroundColor: "#ef4444",
+                            border: "2px solid white",
+                            boxShadow: "0 2px 4px rgba(0,0,0,0.25)",
+                          }}
+                        />
+                        {arrCoords.name && (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 600,
+                              color: "#1e293b",
+                              backgroundColor: "rgba(255,255,255,0.92)",
+                              padding: "1px 5px",
+                              borderRadius: 4,
+                              marginTop: 2,
+                              whiteSpace: "nowrap",
+                              boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: "center",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: 9,
+                                opacity: 0.6,
+                                letterSpacing: "0.05em",
+                              }}
+                            >
+                              Arrivée
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 10,
+                                letterSpacing: "0.03em",
+                                marginTop: -4,
+                              }}
+                            >
+                              {arrCoords.name}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    </Marker>
                   )}
                 </MapLibreMap>
               </div>
@@ -638,66 +803,6 @@ export default function StopPickerMap({ stops, onSelect, onClose, target }) {
             </div>
           </div>
 
-          {/* MapSheet */}
-          <MapSheet
-            isOpen={searchSheetOpen}
-            onClose={() => setSearchSheetOpen(false)}
-            title="Rechercher une adresse"
-          >
-            <div className="space-y-3 pt-1">
-              <input
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={async (e) => {
-                  if (e.key !== "Enter" || !searchQuery.trim()) return;
-                  setSearchLoading(true);
-                  const result = await forwardGeocode(searchQuery);
-                  setSearchLoading(false);
-                  if (!result) return;
-                  setPendingStop({
-                    ...result,
-                    isAddress: true,
-                    isNearest: false,
-                  });
-                  setSearchSheetOpen(false);
-                  setSearchQuery("");
-                  mapRef.current?.flyTo({
-                    center: [result.lon, result.lat],
-                    zoom: 16,
-                    duration: 800,
-                  });
-                }}
-                className="w-full border p-2 rounded-lg"
-                placeholder="ex: 12 rue Félix Viallet, Grenoble"
-              />
-              <button
-                onClick={async () => {
-                  if (!searchQuery.trim()) return;
-                  setSearchLoading(true);
-                  const result = await forwardGeocode(searchQuery);
-                  setSearchLoading(false);
-                  if (!result) return;
-                  setPendingStop({
-                    ...result,
-                    isAddress: true,
-                    isNearest: false,
-                  });
-                  setSearchSheetOpen(false);
-                  setSearchQuery("");
-                  mapRef.current?.flyTo({
-                    center: [result.lon, result.lat],
-                    zoom: 16,
-                    duration: 800,
-                  });
-                }}
-                disabled={searchLoading || !searchQuery.trim()}
-                className="w-full px-4 py-3 bg-blue-600 text-white rounded-xl font-semibold disabled:opacity-60"
-              >
-                {searchLoading ? "Recherche..." : "Rechercher"}
-              </button>
-            </div>
-          </MapSheet>
-
           {/* Sheet walk */}
           {walkStop && (
             <div className="fixed inset-x-0 bottom-0 z-[10002] bg-white rounded-t-3xl shadow-2xl border border-slate-200 px-4 pt-5 pb-10">
@@ -769,6 +874,76 @@ export default function StopPickerMap({ stops, onSelect, onClose, target }) {
         </>,
         document.body,
       )}
+
+      {/* MapSheet */}
+      <MapSheet
+        isOpen={searchSheetOpen}
+        onClose={() => {
+          setSearchSheetOpen(false);
+          setSearchSuggestions([]);
+        }}
+        title="Rechercher une adresse"
+      >
+        <div className="space-y-2 pt-1">
+          <input
+            value={searchQuery}
+            onChange={(e) => {
+              const q = e.target.value;
+              setSearchQuery(q);
+              clearTimeout(searchDebounceRef.current);
+              if (q.length < 2) {
+                setSearchSuggestions([]);
+                return;
+              }
+              searchDebounceRef.current = setTimeout(async () => {
+                const results = await autocompleteGeocode(q);
+                setSearchSuggestions(results);
+              }, 300);
+            }}
+            className="w-full border p-2 rounded-lg"
+            placeholder="ex: 12 rue Félix Viallet, Grenoble"
+            autoFocus
+          />
+          {searchSuggestions.length > 0 && (
+            <ul className="border rounded-xl overflow-hidden divide-y divide-gray-100 bg-white shadow">
+              {searchSuggestions.map((s, i) => (
+                <li key={i}>
+                  <button
+                    className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors"
+                    onClick={() => {
+                      setPendingStop({
+                        name: s.name,
+                        lat: s.lat,
+                        lon: s.lon,
+                        isAddress: true,
+                        isNearest: false,
+                      });
+                      setSearchSheetOpen(false);
+                      setSearchQuery("");
+                      setSearchSuggestions([]);
+                      mapRef.current?.flyTo({
+                        center: [s.lon, s.lat],
+                        zoom: 16,
+                        duration: 800,
+                      });
+                    }}
+                  >
+                    <p className="text-sm font-semibold text-gray-800 truncate">
+                      {s.name}
+                    </p>
+                    <p className="text-xs text-gray-400 truncate">{s.full}</p>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {searchQuery.length >= 2 && searchSuggestions.length === 0 && (
+            <p className="text-sm text-gray-400 text-center py-2">
+              Aucun résultat trouvé pour "{searchQuery}"
+            </p>
+          )}
+        </div>
+      </MapSheet>
 
       {/* Sheet nearest — portal séparé */}
       <NearestStopsSheet

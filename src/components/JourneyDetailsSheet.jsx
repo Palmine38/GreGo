@@ -424,10 +424,12 @@ export function JourneyDetailsSheet({
   lineColors,
   getLineDisruptions,
   hideBackdrop = false,
+  onLineClick,
 }) {
   const currentTime = useCurrentTime();
   const [height, setHeight] = useState(60);
   const [mapOpen, setMapOpen] = useState(false);
+  const [currentSnap, setCurrentSnap] = useState(1);
   const scrollRef = useRef(null);
 
   // Reset quand un nouveau trajet est sélectionné
@@ -453,6 +455,7 @@ export function JourneyDetailsSheet({
         onClose={onClose}
         snapPoints={[0, 0.6, 1]}
         initialSnap={1}
+        onSnap={(snapIndex) => setCurrentSnap(snapIndex)}
       >
         <Sheet.Container style={{ borderRadius: "24px 24px 0 0" }}>
           <Sheet.Header />
@@ -461,14 +464,6 @@ export function JourneyDetailsSheet({
           >
             {/* Contenu scrollable */}
             <div ref={scrollRef} className="overflow-y-auto flex-1 px-4 pb-4">
-              <button
-                type="button"
-                onClick={onClose}
-                className="text-black font-semibold text-lg absolute top-4 right-4 hover:opacity-70"
-              >
-                ×
-              </button>
-
               <div className="mb-2">
                 <p className="text-xs uppercase tracking-widest text-slate-400">
                   Détails du trajet
@@ -487,7 +482,11 @@ export function JourneyDetailsSheet({
                 <div className="flex items-center gap-2 mb-4 mt-4 flex-wrap">
                   {journey.lineKeys.map((lk) =>
                     getLineDisruptions(lk)?.length > 0 ? (
-                      <div key={lk} className="relative">
+                      <button
+                        key={lk}
+                        className="relative"
+                        onClick={() => onLineClick?.(lk, currentSnap)}
+                      >
                         <LineIcon lineKey={lk} size="w-8 h-8" />
                         <span
                           className="absolute -bottom-1 -right-0.5"
@@ -507,7 +506,7 @@ export function JourneyDetailsSheet({
                             />
                           </svg>
                         </span>
-                      </div>
+                      </button>
                     ) : (
                       <div key={lk}>
                         <LineIcon lineKey={lk} size="w-8 h-8" />

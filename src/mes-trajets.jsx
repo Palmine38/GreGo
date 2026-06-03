@@ -18,6 +18,8 @@ import { JourneyMapModal } from "./components/JourneyMapModal.jsx";
 import { JourneyDetailsSheet } from "./components/JourneyDetailsSheet.jsx";
 import { InlineJourneyMap } from "./components/JourneyDetailsSheet.jsx";
 import { LineInfoSheet } from "./components/LineInfoSheet.jsx";
+import { MapSheet } from "./components/MapSheet.jsx";
+import { AddressSearchContent } from "./components/AddressSearchContent.jsx";
 import {
   buildOtpParams,
   filterByLine,
@@ -57,6 +59,20 @@ export default function MesTrajets() {
       if (shortId === idOrName || idOrName.startsWith(shortId)) return nomLong;
     }
     return idOrName;
+  };
+  const resolveCoords = (value) => {
+    if (!value) return null;
+    if (value.includes("::")) {
+      const [namePart, coords] = value.split("::");
+      const [lat, lon] = coords.split(",").map(Number);
+      return { lat, lon, name: namePart };
+    }
+    const stop = findStop(value);
+    if (!stop) return null;
+    const coords = stop[0].split("::")[1];
+    if (!coords) return null;
+    const [lat, lon] = coords.split(",").map(Number);
+    return { lat, lon, name: stop[1] };
   };
   useEffect(() => {
     if (!stopsLoaded) return;
@@ -103,6 +119,9 @@ export default function MesTrajets() {
   const [error, setError] = useState("");
   const [timeOffset, setTimeOffset] = useState(0);
   const [searchBaseDate, setSearchBaseDate] = useState(new Date());
+  const [mapPickerOpenSearch, setMapPickerOpenSearch] = useState(false);
+  const [addressSearchOpen, setAddressSearchOpen] = useState(false);
+  const [addressSearchTarget, setAddressSearchTarget] = useState("dep");
   const searchBaseDateRef = useRef(searchBaseDate);
   useEffect(() => {
     searchBaseDateRef.current = searchBaseDate;
@@ -152,6 +171,7 @@ export default function MesTrajets() {
   // ── Journey details ───────────────────────────────────────────────────────
   const [selectedJourney, setSelectedJourney] = useState(null);
   const [journeyDetailsOpen, setJourneyDetailsOpen] = useState(false);
+  const [lineInfoInitialSnap, setLineInfoInitialSnap] = useState(1);
   useEffect(() => {
     if (selectedJourney)
       requestAnimationFrame(() => setJourneyDetailsOpen(true));
@@ -864,6 +884,11 @@ export default function MesTrajets() {
           journey={selectedJourney}
           lineColors={lineColors}
           getLineDisruptions={getLineDisruptions}
+          onLineClick={(lk, snapIndex) => {
+            setSelectedLineInfo(lk);
+            setLineInfoInitialSnap(snapIndex);
+            requestAnimationFrame(() => setLineInfoOpen(true));
+          }}
         />
 
         {/* ── Sheet : Infotrafic ligne ──────────────────────────────── */}
@@ -872,6 +897,7 @@ export default function MesTrajets() {
           isOpen={lineInfoOpen}
           onClose={closeLineInfo}
           getLineDisruptions={getLineDisruptions}
+          initialSnap={lineInfoInitialSnap}
         />
 
         {/* ── Sheet : Renommer ──────────────────────────────────────── */}
@@ -1003,9 +1029,15 @@ export default function MesTrajets() {
                 onCancel={cancel}
                 loading={loading}
                 stopsLoaded={stopsLoaded}
-                onOpenMapPicker={(target) => {
-                  setMapPickerTarget(target);
-                  setMapPickerOpen(true);
+                onOpenMapPicker={(target, mode) => {
+                  if (mode === "search") {
+                    setAddressSearchTarget(target);
+                    setAddressSearchOpen(true); // ouvre le sheet direct, sans la map
+                  } else {
+                    setMapPickerTarget(target);
+                    setMapPickerOpenSearch(false);
+                    setMapPickerOpen(true);
+                  }
                 }}
               />
             </Sheet.Content>
@@ -1019,6 +1051,8 @@ export default function MesTrajets() {
         <StopPickerMap
           stops={stopsList}
           target={mapPickerTarget}
+          depCoords={resolveCoords(dep)}
+          arrCoords={resolveCoords(arr)}
           onSelect={(name) => {
             if (mapPickerTarget === "dep") setDep(name);
             else setArr(name);
@@ -1026,6 +1060,20 @@ export default function MesTrajets() {
           onClose={() => setMapPickerOpen(false)}
         />
       )}
+      <MapSheet
+        isOpen={addressSearchOpen}
+        onClose={() => setAddressSearchOpen(false)}
+        title={`Adresse de ${addressSearchTarget === "dep" ? "départ" : "arrivée"}`}
+      >
+        <AddressSearchContent
+          onSelect={(result) => {
+            const value = `${result.name}::${result.lat},${result.lon}`;
+            if (addressSearchTarget === "dep") setDep(value);
+            else setArr(value);
+            setAddressSearchOpen(false);
+          }}
+        />
+      </MapSheet>
     </>
   );
 }

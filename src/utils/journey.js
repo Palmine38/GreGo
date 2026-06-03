@@ -89,18 +89,23 @@ export const parseItinerary = (it, { depName, arrName, lineFilter }) => {
     return routeShortName || route || routeId || "?";
   });
 
+  const isWalkOnly = transitLegs.length === 0;
+
   return {
     dep: depTime,
     arr: arrTime,
     depName,
     arrName,
     dur: formatDuration(duration),
-    direction:
-      transitLegs.length > 0
-        ? transitLegs[transitLegs.length - 1]?.to?.name || "?"
-        : "?",
-    line: lineFilter ? lineFilter.toUpperCase() : lineKeys[0] || "?",
-    lineKeys,
+    direction: isWalkOnly
+      ? "À pied"
+      : transitLegs[transitLegs.length - 1]?.to?.name || "?",
+    line: isWalkOnly
+      ? "WALK"
+      : lineFilter
+        ? lineFilter.toUpperCase()
+        : lineKeys[0] || "?",
+    lineKeys: isWalkOnly ? ["WALK"] : lineKeys,
     legs: transitLegs,
     allLegs,
   };

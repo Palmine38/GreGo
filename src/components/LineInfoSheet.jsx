@@ -8,6 +8,7 @@ export function LineInfoSheet({
   isOpen,
   onClose,
   getLineDisruptions,
+  initialSnap = 1,
 }) {
   const [height, setHeight] = useState(60);
 
@@ -20,7 +21,14 @@ export function LineInfoSheet({
   const disruptions = getLineDisruptions(lineKey);
 
   return (
-    <Sheet isOpen={isOpen} onClose={onClose} detent="content">
+    <Sheet
+      isOpen={isOpen}
+      onClose={onClose}
+      snapPoints={[0, 0.6, 1]}
+      initialSnap={initialSnap}
+      dragVelocityThreshold={200}
+      dragCloseThreshold={0.3}
+    >
       <Sheet.Container style={{ borderRadius: "24px 24px 0 0" }}>
         <Sheet.Header />
         <Sheet.Content>
@@ -35,12 +43,6 @@ export function LineInfoSheet({
                   Ligne {lineKey}
                 </h2>
               </div>
-              <button
-                onClick={onClose}
-                className="ml-auto text-slate-400 hover:text-slate-700 text-xl font-bold"
-              >
-                ×
-              </button>
             </div>
 
             {disruptions.length === 0 ? (

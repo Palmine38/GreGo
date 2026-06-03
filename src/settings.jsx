@@ -172,7 +172,6 @@ export default function Settings({
       background: `linear-gradient(to right, #2563eb ${pct}%, #d1d5db ${pct}%)`,
     };
   };
-  console.log("resetStep:", resetStep); // juste avant le return
 
   return (
     <>

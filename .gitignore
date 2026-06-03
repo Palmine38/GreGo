@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Public assets
+/public/apple-touch-icon.png
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
