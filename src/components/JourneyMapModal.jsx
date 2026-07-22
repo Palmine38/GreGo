@@ -7,9 +7,12 @@ import LineIcon, {
   preloadLineData,
   getLineDataFromCache,
 } from "./lines-icons.jsx";
+import { useTheme } from "../hooks/useTheme.js";
 
-const MAPTILER_STYLE_URL =
+const MAPTILER_STYLE_URL_LIGHT =
   "https://api.maptiler.com/maps/019d0d02-359b-7f4b-a797-bdeabca9dce3/style.json?key=7TQErbyvEqFlis3QMmSl";
+const MAPTILER_STYLE_URL_DARK =
+  "https://api.maptiler.com/maps/019f7c73-0431-726f-ae5d-598a16a06771/style.json?key=7TQErbyvEqFlis3QMmSl";
 
 function decodePolyline(encoded) {
   let index = 0,
@@ -39,6 +42,44 @@ function decodePolyline(encoded) {
   return coords;
 }
 
+// OTP fournit parfois une géométrie qui s'arrête à quelques mètres de la
+// position déclarée de l'arrêt. On recale le tracé affiché sur ces positions.
+const STOP_SNAP_DISTANCE = 0.0007; // environ 75 m
+
+function magnetizeLegGeometry(leg) {
+  if (!leg.legGeometry?.points) return [];
+
+  const coords = decodePolyline(leg.legGeometry.points);
+  if (!coords.length) return coords;
+
+  const snapIntermediateStop = (stop) => {
+    if (!Number.isFinite(stop?.lon) || !Number.isFinite(stop?.lat)) return;
+
+    let closestIndex = 0;
+    let closestDistance = Infinity;
+    coords.forEach(([lon, lat], index) => {
+      const distance = (lon - stop.lon) ** 2 + (lat - stop.lat) ** 2;
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = index;
+      }
+    });
+
+    if (closestDistance <= STOP_SNAP_DISTANCE ** 2) {
+      coords[closestIndex] = [stop.lon, stop.lat];
+    }
+  };
+
+  (leg.intermediateStops || []).forEach(snapIntermediateStop);
+  if (Number.isFinite(leg.from?.lon) && Number.isFinite(leg.from?.lat)) {
+    coords[0] = [leg.from.lon, leg.from.lat];
+  }
+  if (Number.isFinite(leg.to?.lon) && Number.isFinite(leg.to?.lat)) {
+    coords[coords.length - 1] = [leg.to.lon, leg.to.lat];
+  }
+  return coords;
+}
+
 /** Retourne le point médian d'un tableau de coordonnées [lon, lat] */
 function midpoint(coords) {
   if (!coords.length) return null;
@@ -48,6 +89,9 @@ function midpoint(coords) {
 
 export function JourneyMapModal({ journey, lineColors, onClose }) {
   const mapRef = useRef(null);
+  const theme = useTheme();
+  const mapStyle =
+    theme !== "light" ? MAPTILER_STYLE_URL_DARK : MAPTILER_STYLE_URL_LIGHT;
   const [visible, setVisible] = useState(false);
   const [zoom, setZoom] = useState(13);
   const [iconsReady, setIconsReady] = useState(false);
@@ -69,12 +113,33 @@ export function JourneyMapModal({ journey, lineColors, onClose }) {
     setTimeout(onClose, 250);
   };
 
+  const NEGLIGIBLE_WALK_DISTANCE = 0.0008;
+
+  function legDistance(leg) {
+    const dLon = (leg.to?.lon ?? 0) - (leg.from?.lon ?? 0);
+    const dLat = (leg.to?.lat ?? 0) - (leg.from?.lat ?? 0);
+    return Math.sqrt(dLon ** 2 + dLat ** 2);
+  }
+
+  function isNegligibleWalk(leg) {
+    return leg.mode === "WALK" && legDistance(leg) < NEGLIGIBLE_WALK_DISTANCE;
+  }
+
   if (!journey) return null;
 
   const allLegs = journey.allLegs || [];
+  const filteredLegs = allLegs.filter((leg) => !isNegligibleWalk(leg));
 
   // Legs transit uniquement (pas marche)
   const transitLegs = allLegs.filter((leg) => leg.mode !== "WALK");
+  const vectorEndpoints = allLegs.flatMap((leg, legIndex) => {
+    const coords = magnetizeLegGeometry(leg);
+    if (coords.length < 2) return [];
+    return [
+      { coords: coords[0], type: "start", legIndex },
+      { coords: coords[coords.length - 1], type: "end", legIndex },
+    ];
+  });
   const departureMarker = transitLegs[0]
     ? {
         lon: transitLegs[0].from?.lon,
@@ -83,11 +148,11 @@ export function JourneyMapModal({ journey, lineColors, onClose }) {
       }
     : null;
 
-  const arrivalMarker = transitLegs[transitLegs.length - 1]
+  const arrivalMarker = allLegs[allLegs.length - 1]
     ? {
-        lon: transitLegs[transitLegs.length - 1].to?.lon,
-        lat: transitLegs[transitLegs.length - 1].to?.lat,
-        name: transitLegs[transitLegs.length - 1].to?.name,
+        lon: allLegs[allLegs.length - 1].to?.lon,
+        lat: allLegs[allLegs.length - 1].to?.lat,
+        name: allLegs[allLegs.length - 1].to?.name,
       }
     : null;
 
@@ -103,9 +168,7 @@ export function JourneyMapModal({ journey, lineColors, onClose }) {
     ),
   ];
 
-  const allCoords = allLegs.flatMap((leg) =>
-    leg.legGeometry?.points ? decodePolyline(leg.legGeometry.points) : [],
-  );
+  const allCoords = allLegs.flatMap(magnetizeLegGeometry);
   const lats = allCoords.map(([, lat]) => lat);
   const lons = allCoords.map(([lon]) => lon);
   const bounds =
@@ -131,24 +194,25 @@ export function JourneyMapModal({ journey, lineColors, onClose }) {
     .filter((m) => m.lon && m.lat);
 
   // ── Arrêts intermédiaires (visibles seulement si zoom >= 16) ──────────────
-  const allIntermediateStops = transitLegs.flatMap((leg) => {
+  const allTransitStops = transitLegs.flatMap((leg) => {
     const lineName = (leg.routeShortName || leg.route || leg.routeId || "")
       .replace("SEM:", "")
       .toUpperCase();
     const color = LINE_COLORS[lineName] || lineColors?.[lineName] || "#94A3B8";
-    return (leg.intermediateStops || []).map((s) => ({
+    return [...(leg.intermediateStops || []), leg.to]
+      .filter((stop) => stop?.lon && stop?.lat)
+      .map((s) => ({
       lon: s.lon,
       lat: s.lat,
       name: s.name,
       color,
-    }));
+      }));
   });
 
   // ── Icônes de ligne au milieu de chaque tracé transit ────────────────────
   const legMidpoints = transitLegs
     .map((leg) => {
-      if (!leg.legGeometry?.points) return null;
-      const coords = decodePolyline(leg.legGeometry.points);
+      const coords = magnetizeLegGeometry(leg);
       const mid = midpoint(coords);
       if (!mid) return null;
       const lineName = (leg.routeShortName || leg.route || leg.routeId || "")
@@ -228,7 +292,7 @@ export function JourneyMapModal({ journey, lineColors, onClose }) {
         <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
           <MapLibreMap
             ref={mapRef}
-            mapStyle={MAPTILER_STYLE_URL}
+            mapStyle={mapStyle}
             initialViewState={
               bounds
                 ? { bounds, fitBoundsOptions: { padding: 48 } }
@@ -239,8 +303,8 @@ export function JourneyMapModal({ journey, lineColors, onClose }) {
           >
             {/* ── Tracés ────────────────────────────────────────────── */}
             {allLegs.map((leg, i) => {
-              if (!leg.legGeometry?.points) return null;
-              const coords = decodePolyline(leg.legGeometry.points);
+              const coords = magnetizeLegGeometry(leg);
+              if (coords.length < 2) return null;
               const isWalk = leg.mode === "WALK";
               const lineName = (
                 leg.routeShortName ||
@@ -276,9 +340,28 @@ export function JourneyMapModal({ journey, lineColors, onClose }) {
               );
             })}
 
-            {/* ── Arrêts intermédiaires (zoom >= 16 seulement) ──────── */}
-            {zoom >= 16 &&
-              allIntermediateStops.map((m, i) => (
+            {/* ── Arrêts intermédiaires de transit ─────────────────── */}
+            {vectorEndpoints.map((endpoint) => (
+              <Marker
+                key={`vector-endpoint-${endpoint.legIndex}-${endpoint.type}`}
+                longitude={endpoint.coords[0]}
+                latitude={endpoint.coords[1]}
+                anchor="center"
+              >
+                <div
+                  style={{
+                    width: 10,
+                    height: 10,
+                    borderRadius: "50%",
+                    backgroundColor: "white",
+                    border: "2px solid #64748B",
+                    boxShadow: "0 1px 4px rgba(0,0,0,0.35)",
+                  }}
+                />
+              </Marker>
+            ))}
+
+            {allTransitStops.map((m, i) => (
                 <Marker
                   key={`stop-${i}`}
                   longitude={m.lon}
@@ -297,7 +380,7 @@ export function JourneyMapModal({ journey, lineColors, onClose }) {
                     }}
                   />
                 </Marker>
-              ))}
+            ))}
 
             {/* ── Marqueurs de correspondance (toujours visibles) ───── */}
             {transferMarkers.map((m, i) => (

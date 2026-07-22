@@ -1,5 +1,6 @@
 import React from "react";
 import LineIcon from "./lines-icons.jsx";
+import { useTheme } from "../hooks/useTheme.js";
 
 const DisruptedIcon = () => (
   <svg
@@ -62,6 +63,8 @@ export function JourneyResultsHeader({
   onLineClick,
   onRefresh,
 }) {
+  const theme = useTheme();
+  const disruptedColor = theme !== "light" ? "#ea580c" : "#e61e1e";
   const savedSettings = JSON.parse(
     localStorage.getItem("tag-express-settings") || "{}",
   );
@@ -70,6 +73,7 @@ export function JourneyResultsHeader({
   const allUniqueLines = Array.from(
     new Set(results.flatMap((r) => r.lineKeys || [])),
   ).filter((lk) => {
+    if (lk.toUpperCase() === "WALK") return false;
     if (headerLinesSetting === "hidden") return false;
     if (headerLinesSetting === "disrupted") return isLineDisrupted(lk);
     return true;
@@ -104,7 +108,7 @@ export function JourneyResultsHeader({
                     <LineIcon lineKey={lk} size="w-6 h-6" />
                     <span
                       className="absolute -bottom-1 -right-1"
-                      style={{ color: "#e61e1e" }}
+                      style={{ color: disruptedColor }}
                     >
                       <DisruptedIcon />
                     </span>

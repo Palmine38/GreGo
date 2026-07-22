@@ -30,6 +30,8 @@ export function useDisruptions() {
             }
         };
         fetchDisruptions();
+        const interval = setInterval(fetchDisruptions, 30000);
+        return () => clearInterval(interval);
     }, []);
 
     const isLineDisrupted = (lineKey) => {

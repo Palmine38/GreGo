@@ -15,7 +15,11 @@ export function DisruptionItem({ evt }) {
     }, [expanded]);
 
     const parts = (evt.texte || '').split('|');
-    const titre = parts[0].trim();
+    const titreBrut = parts[0].trim();
+    const titreSansLigne = titreBrut.replace(/^.*?:\s*/, '');
+    const titre = titreSansLigne
+        ? titreSansLigne.charAt(0).toUpperCase() + titreSansLigne.slice(1)
+        : '';
     const corps = parts.slice(1).join('\n').replace(/<[^>]+>/g, '').trim();
     const lines = corps.split('\n');
     const jusquauLine = lines.find((l) => /jusqu['']au/i.test(l))?.trim();

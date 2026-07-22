@@ -8,13 +8,19 @@ import {
 import { useEffect } from "react";
 import FastResearch from "./fast-research.jsx";
 import MesTrajets from "./mes-trajets.jsx";
+import Settings from "./settings.jsx";
 import NoMobile from "./nomobile.jsx";
+import SuiviBeta from "./suivi-beta.jsx";
+import { applyTheme, normalizeTheme } from "./hooks/useTheme.js";
 import "./App.css";
 
 function DeviceGuard({ children }) {
   const navigate = useNavigate();
 
   useEffect(() => {
+    const bypass = sessionStorage.getItem("bypassDeviceGuard") === "true";
+    if (bypass) return;
+
     const isMobile =
       /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
       window.innerWidth < 768;
@@ -27,6 +33,15 @@ function DeviceGuard({ children }) {
 }
 
 function App() {
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("tag-express-settings"));
+      applyTheme(normalizeTheme(saved?.theme));
+    } catch {
+      applyTheme("light");
+    }
+  }, []);
+
   return (
     <Router>
       <Routes>
@@ -44,6 +59,22 @@ function App() {
           element={
             <DeviceGuard>
               <MesTrajets />
+            </DeviceGuard>
+          }
+        />
+        <Route
+          path="/settings"
+          element={
+            <DeviceGuard>
+              <Settings />
+            </DeviceGuard>
+          }
+        />
+        <Route
+          path="/suivi-beta/"
+          element={
+            <DeviceGuard>
+              <SuiviBeta />
             </DeviceGuard>
           }
         />

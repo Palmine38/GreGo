@@ -1,7 +1,7 @@
 import React from "react";
 import LineIcon, { LINE_COLORS } from "./lines-icons.jsx";
-import { DisruptionItem } from "./DisruptionItem.jsx";
 import { formatDuration } from "../utils/journey.js";
+import { isCurrentLocationValue } from "../utils/currentLocation.js";
 
 /**
  * Affiche la timeline pas-à-pas d'un itinéraire (transit + marche).
@@ -9,18 +9,20 @@ import { formatDuration } from "../utils/journey.js";
  * Props :
  *   journey            — objet itinéraire (allLegs, …)
  *   lineColors         — map { shortName: '#color' } depuis l'API
- *   getLineDisruptions — fn(lineName) → tableau d'évènements
  *   onOpenMap          — callback pour ouvrir la carte (géré par le parent)
  */
 export function JourneyTimeline({
   journey,
   lineColors,
-  getLineDisruptions,
   onOpenMap,
 }) {
   if (!journey) return null;
 
-  const depIsAddress = (journey.rawDep || "").includes("::");
+  // La position actuelle, comme une adresse saisie, doit afficher la marche
+  // entre le point de départ réel et le premier arrêt.
+  const depIsAddress =
+    isCurrentLocationValue(journey.rawDep) ||
+    (journey.rawDep || "").includes("::");
   const arrIsAddress = (journey.rawArr || "").includes("::");
 
   const allLegs = (journey.allLegs || []).filter((leg, i, arr) => {
@@ -43,17 +45,6 @@ export function JourneyTimeline({
     const durationMin = Math.round(leg.duration / 60);
 
     if (!isWalk) {
-      const disruptions = getLineDisruptions(lineName);
-      if (disruptions.length > 0) {
-        items.push(
-          <div key={`disruption-${i}`} className="flex flex-col gap-2 mb-3">
-            {disruptions.map((evt, di) => (
-              <DisruptionItem key={di} evt={evt} />
-            ))}
-          </div>,
-        );
-      }
-
       items.push(
         <div key={`transit-start-${i}`} className="flex gap-3 items-start mb-0">
           <div className="flex flex-col items-center w-8 flex-shrink-0">

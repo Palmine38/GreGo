@@ -152,6 +152,42 @@ export function NearestStopsSheet({
                     </p>
                   ) : (
                     <div className="flex flex-col divide-y divide-slate-100">
+                      {userLocation && (
+                        <button
+                          key="user-location"
+                          className="flex items-center justify-between py-3 w-full text-left hover:bg-slate-50 rounded-lg px-1 transition-colors"
+                          onClick={() => {
+                            onSelectStop({
+                              name: "Votre position",
+                              lat: userLocation.lat,
+                              lon: userLocation.lon,
+                              isAddress: true,
+                            });
+                            onClose();
+                          }}
+                        >
+                          <span className="text-sm font-medium text-slate-800">
+                            Votre position
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-400">0 m</span>
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                              strokeWidth={2}
+                              stroke="currentColor"
+                              className="w-4 h-4 text-slate-300"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="m8.25 4.5 7.5 7.5-7.5 7.5"
+                              />
+                            </svg>
+                          </div>
+                        </button>
+                      )}
                       {nearest.map((stop, i) => (
                         <button
                           key={stop.id}

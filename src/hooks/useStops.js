@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { removeAccents } from "../utils/journey.js";
 
+const roundCoord = (n) => Math.round(n * 1e5) / 1e5;
+
 export function useStops() {
+  // name -> [{ id, stopId, name, lat, lon, code, lines }, ...]
   const [stopsMap, setStopsMap] = useState({});
   const [stopsList, setStopsList] = useState([]);
   const [stopsLoaded, setStopsLoaded] = useState(false);
@@ -18,6 +21,7 @@ export function useStops() {
           .filter((id) => id?.startsWith("SEM:"))
           .map((id) => id.replace("SEM:", ""));
 
+        // name (lowercase) -> Map(positionKey -> position)
         const newMap = {};
         const list = [];
 
@@ -29,29 +33,51 @@ export function useStops() {
               );
               const clusters = await r.json();
               clusters.forEach((stop) => {
-                const key = stop.name.toLowerCase();
+                const nameKey = stop.name.toLowerCase();
+                const lat = roundCoord(stop.lat);
+                const lon = roundCoord(stop.lon);
+                const positionKey = `${lat},${lon}`;
 
-                // list : tous les stops, dédup par id après
+                if (!newMap[nameKey]) newMap[nameKey] = new Map();
+
+                const existing = newMap[nameKey].get(positionKey);
+                if (existing) {
+                  existing.lines.add(l);
+                } else {
+                  newMap[nameKey].set(positionKey, {
+                    id: `${stop.id}::${lat},${lon}`,
+                    stopId: stop.id,
+                    clusterId: stop.id,
+                    name: stop.name,
+                    lat: stop.lat,
+                    lon: stop.lon,
+                    code: stop.code,
+                    lines: new Set([l]),
+                  });
+                }
+
                 list.push({
                   id: stop.id,
                   code: stop.code,
                   name: stop.name,
                   lat: stop.lat,
                   lon: stop.lon,
+                  line: l,
                 });
-
-                // newMap : un seul entry par nom pour la recherche texte
-                if (!newMap[key]) {
-                  newMap[key] = [
-                    `${stop.id}::${stop.lat},${stop.lon}`,
-                    stop.name,
-                    stop.code,
-                  ];
-                }
               });
             } catch {}
           }),
         );
+
+        const finalMap = {};
+        for (const [nameKey, positions] of Object.entries(newMap)) {
+          finalMap[nameKey] = Array.from(positions.values()).map(
+            ({ lines, ...position }) => ({
+              ...position,
+              lines: Array.from(lines),
+            }),
+          );
+        }
 
         const seen = new Set();
         const dedupedList = [];
@@ -64,7 +90,7 @@ export function useStops() {
         }
 
         setStopsList(dedupedList);
-        setStopsMap(newMap);
+        setStopsMap(finalMap);
       } catch {
         setStopsMap({});
       } finally {
@@ -74,17 +100,29 @@ export function useStops() {
     fetchStops();
   }, []);
 
-  const findStop = (query) => {
-    if (!query?.trim()) return null;
+  const findStop = (query, preferredLine) => {
+    if (!query?.trim()) return [];
     const key = removeAccents(query.trim().toLowerCase());
+
+    const prioritizeLine = (positions) => {
+      if (!preferredLine?.trim()) return positions;
+      const line = preferredLine.replace("SEM:", "").toUpperCase();
+      return [...positions].sort(
+        (a, b) =>
+          Number(b.lines.includes(line)) - Number(a.lines.includes(line)),
+      );
+    };
+
     for (const [k, v] of Object.entries(stopsMap)) {
-      if (removeAccents(k) === key) return v;
+      if (removeAccents(k) === key) return prioritizeLine(v);
     }
     for (const [k, v] of Object.entries(stopsMap)) {
       const normalizedK = removeAccents(k);
-      if (normalizedK.includes(key) || key.includes(normalizedK)) return v;
+      if (normalizedK.includes(key) || key.includes(normalizedK)) {
+        return prioritizeLine(v);
+      }
     }
-    return null;
+    return [];
   };
 
   const suggestionsFor = (value) => {
@@ -97,9 +135,11 @@ export function useStops() {
     }
     return Object.keys(stopsMap)
       .filter((k) => removeAccents(k).includes(q))
-      .filter((k) => removeAccents(stopsMap[k][1].toLowerCase()) !== q)
+      .filter(
+        (k) => removeAccents(stopsMap[k][0].name.toLowerCase()) !== q,
+      )
       .slice(0, 10)
-      .map((k) => stopsMap[k][1]);
+      .map((k) => stopsMap[k][0].name);
   };
 
   return { stopsMap, stopsList, stopsLoaded, findStop, suggestionsFor };

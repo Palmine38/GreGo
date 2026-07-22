@@ -1,4 +1,9 @@
 import React from "react";
+import {
+  CURRENT_LOCATION_LABEL,
+  CURRENT_LOCATION_VALUE,
+  isCurrentLocationValue,
+} from "../utils/currentLocation.js";
 
 /**
  * Panneau de recherche partagé entre FastResearch et MesTrajets.
@@ -25,23 +30,53 @@ export function SearchForm({
   title = "Recherche",
   dep,
   arr,
+  depDisplay,
+  arrDisplay,
   line,
+  searchDate,
+  searchTime,
   setDep,
   setArr,
   setLine,
+  setSearchDate,
+  setSearchTime,
   depSuggestions,
   arrSuggestions,
+  depAddressSuggestions = [],
+  arrAddressSuggestions = [],
   onSelectSuggestion,
   onSearch,
   onReset,
   onCancel,
   loading,
+  error: _error,
   stopsLoaded,
   onDepBlur,
   onArrBlur,
   onOpenMapPicker,
 }) {
   const [activeInput, setActiveInput] = React.useState(null);
+  const formatInputValue = (value, displayValue) => {
+    if (isCurrentLocationValue(value)) return CURRENT_LOCATION_LABEL;
+    if (displayValue && displayValue !== value) return displayValue;
+    return value.includes("::") ? value.split("::")[0] : value;
+  };
+  const depUsesCurrentLocation = isCurrentLocationValue(dep);
+  const formatDateInputValue = (date) => {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const handleDateChange = (value) => {
+    if (!value || !setSearchDate) return;
+    const [year, month, day] = value.split("-").map(Number);
+    const nextDate = new Date(searchDate || new Date());
+    nextDate.setFullYear(year, month - 1, day);
+    setSearchDate(nextDate);
+  };
   return (
     <div className="px-4 pt-4 pb-10">
       <div className="flex justify-between items-center mb-4">
@@ -71,38 +106,72 @@ export function SearchForm({
         {/* Départ */}
         <div className="space-y-1 relative">
           <span className="text-sm text-gray-600">Départ</span>
-          <div className="flex items-center gap-1">
-            <input
-              value={dep.includes("::") ? dep.split("::")[0] : dep}
-              onChange={(e) => setDep(e.target.value)}
-              onClick={() => setActiveInput("dep")}
-              onFocus={() => setActiveInput("dep")}
-              className="flex-1 border p-2 rounded-lg"
-              placeholder="ex: Victor Hugo"
-            />
+          <div className="flex items-center">
+            <div className="relative flex-1">
+              <input
+                value={formatInputValue(dep, depDisplay)}
+                onChange={(e) => setDep(e.target.value)}
+                onClick={() => setActiveInput("dep")}
+                onFocus={() => setActiveInput("dep")}
+                className={`w-full border p-2 rounded-lg ${depUsesCurrentLocation ? "pr-8" : ""}`}
+                placeholder="ex: Victor Hugo"
+              />
+              {depUsesCurrentLocation && (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="absolute right-2 top-1/2 size-4 -translate-y-1/2 text-black pointer-events-none"
+                  aria-hidden="true"
+                >
+                  <path d="M4 11a9 9 0 0 1 9 9" />
+                  <path d="M4 4a16 16 0 0 1 16 16" />
+                  <circle cx="5" cy="19" r="1" />
+                </svg>
+              )}
+            </div>
             {onOpenMapPicker && (
               <button
                 type="button"
+                title="Utiliser ma position en temps reel"
+                aria-label="Utiliser ma position en temps reel"
                 onPointerDown={(e) => {
                   e.preventDefault();
                   if (document.activeElement instanceof HTMLElement) {
                     document.activeElement.blur();
                   }
                 }}
-                onClick={() => onOpenMapPicker("dep", "search")}
-                className="p-2 text-gray-400 hover:text-gray-700 transition-colors"
+                onClick={() => {
+                  setDep(CURRENT_LOCATION_VALUE);
+                  setActiveInput(null);
+                }}
+                className={`ml-1 p-1.5 transition-colors ${
+                  depUsesCurrentLocation
+                    ? "text-slate-400 hover:text-slate-700"
+                    : "text-gray-400 hover:text-gray-700"
+                }`}
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  className="size-5"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 256 256"
+                  className="size-4"
                 >
-                  <path
-                    fillRule="evenodd"
-                    d="M10.5 3.75a6.75 6.75 0 1 0 0 13.5 6.75 6.75 0 0 0 0-13.5ZM2.25 10.5a8.25 8.25 0 1 1 14.59 5.28l4.69 4.69a.75.75 0 1 1-1.06 1.06l-4.69-4.69A8.25 8.25 0 0 1 2.25 10.5Z"
-                    clipRule="evenodd"
-                  />
+                  <g transform="translate(1.4065934065934016 1.4065934065934016) scale(2.81 2.81)">
+                    <path
+                      d="M 26.731 55.583 L 1.142 45.289 c -1.682 -0.677 -1.459 -3.168 0.362 -4.041 L 87.116 0.205 c 1.71 -0.82 3.499 0.969 2.679 2.679 L 48.752 88.496 c -0.873 1.821 -3.364 2.044 -4.041 0.362 L 34.417 63.269 C 33.009 59.767 30.233 56.991 26.731 55.583 z"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="7"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </g>
                 </svg>
               </button>
             )}
@@ -116,7 +185,7 @@ export function SearchForm({
                   }
                 }}
                 onClick={() => onOpenMapPicker("dep")}
-                className="p-2 text-gray-400 hover:text-gray-700 transition-colors"
+                className="-ml-1 p-1.5 text-gray-400 hover:text-gray-700 transition-colors"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -140,27 +209,53 @@ export function SearchForm({
               </button>
             )}
           </div>
-          {activeInput === "dep" && dep && depSuggestions.length > 0 && (
-            <ul className="absolute z-40 left-0 right-0 mt-1 border border-gray-200 rounded-lg bg-white max-h-40 overflow-y-auto shadow-lg">
-              {depSuggestions.map((s, i) => (
-                <li
-                  key={i}
-                  className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
-                  onClick={() => onSelectSuggestion(s, "dep")}
-                >
-                  {s}
-                </li>
-              ))}
-            </ul>
-          )}
+          {activeInput === "dep" &&
+            dep &&
+            (depSuggestions.length > 0 || depAddressSuggestions.length > 0) && (
+              <ul className="absolute z-40 left-0 right-0 mt-1 border border-gray-200 rounded-lg bg-white max-h-40 overflow-y-auto shadow-lg">
+                {depSuggestions.length > 0 && (
+                  <li className="px-3 pt-2 pb-1 text-[11px] font-bold tracking-widest text-slate-400">
+                    ARRÊTS
+                  </li>
+                )}
+                {depSuggestions.map((s, i) => (
+                  <li
+                    key={i}
+                    className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                    onClick={() => onSelectSuggestion(s, "dep")}
+                  >
+                    {s}
+                  </li>
+                ))}
+                {depAddressSuggestions.length > 0 && (
+                  <li className="border-t border-slate-100 px-3 pt-3 pb-1 text-[11px] font-bold tracking-widest text-slate-400">
+                    ADRESSES
+                  </li>
+                )}
+                {depAddressSuggestions.map((address) => (
+                  <li
+                    key={address.value}
+                    className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                    onClick={() => onSelectSuggestion(address.value, "dep")}
+                  >
+                    <p className="text-sm font-semibold text-slate-800">
+                      {address.label}
+                    </p>
+                    <p className="truncate text-xs text-slate-500">
+                      {address.detail}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
         </div>
 
         {/* Arrivée */}
         <div className="space-y-1 relative">
           <span className="text-sm text-gray-600">Arrivée</span>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center">
             <input
-              value={arr.includes("::") ? arr.split("::")[0] : arr}
+              value={formatInputValue(arr, arrDisplay)}
               onChange={(e) => setArr(e.target.value)}
               onClick={() => setActiveInput("arr")}
               onFocus={() => setActiveInput("arr")}
@@ -176,34 +271,8 @@ export function SearchForm({
                     document.activeElement.blur();
                   }
                 }}
-                onClick={() => onOpenMapPicker("dep", "search")}
-                className="p-2 text-gray-400 hover:text-gray-700 transition-colors"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="currentColor"
-                  className="size-5"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M10.5 3.75a6.75 6.75 0 1 0 0 13.5 6.75 6.75 0 0 0 0-13.5ZM2.25 10.5a8.25 8.25 0 1 1 14.59 5.28l4.69 4.69a.75.75 0 1 1-1.06 1.06l-4.69-4.69A8.25 8.25 0 0 1 2.25 10.5Z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </button>
-            )}
-            {onOpenMapPicker && (
-              <button
-                type="button"
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  if (document.activeElement instanceof HTMLElement) {
-                    document.activeElement.blur();
-                  }
-                }}
                 onClick={() => onOpenMapPicker("arr")}
-                className="p-2 text-gray-400 hover:text-gray-700 transition-colors"
+                className="-ml-1 p-1.5 text-gray-400 hover:text-gray-700 transition-colors"
               >
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -227,33 +296,89 @@ export function SearchForm({
               </button>
             )}
           </div>
-          {activeInput === "arr" && arr && arrSuggestions.length > 0 && (
-            <ul className="absolute z-40 left-0 right-0 mt-1 border border-gray-200 rounded-lg bg-white max-h-40 overflow-y-auto shadow-lg">
-              {arrSuggestions.map((s, i) => (
-                <li
-                  key={i}
-                  className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
-                  onClick={() => onSelectSuggestion(s, "arr")}
-                >
-                  {s}
-                </li>
-              ))}
-            </ul>
-          )}
+          {activeInput === "arr" &&
+            arr &&
+            (arrSuggestions.length > 0 || arrAddressSuggestions.length > 0) && (
+              <ul className="absolute z-40 left-0 right-0 mt-1 border border-gray-200 rounded-lg bg-white max-h-40 overflow-y-auto shadow-lg">
+                {arrSuggestions.length > 0 && (
+                  <li className="px-3 pt-2 pb-1 text-[11px] font-bold tracking-widest text-slate-400">
+                    ARRÊTS
+                  </li>
+                )}
+                {arrSuggestions.map((s, i) => (
+                  <li
+                    key={i}
+                    className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                    onClick={() => onSelectSuggestion(s, "arr")}
+                  >
+                    {s}
+                  </li>
+                ))}
+                {arrAddressSuggestions.length > 0 && (
+                  <li className="border-t border-slate-100 px-3 pt-3 pb-1 text-[11px] font-bold tracking-widest text-slate-400">
+                    ADRESSES
+                  </li>
+                )}
+                {arrAddressSuggestions.map((address) => (
+                  <li
+                    key={address.value}
+                    className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
+                    onClick={() => onSelectSuggestion(address.value, "arr")}
+                  >
+                    <p className="text-sm font-semibold text-slate-800">
+                      {address.label}
+                    </p>
+                    <p className="truncate text-xs text-slate-500">
+                      {address.detail}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
         </div>
 
         {/* Ligne (optionnel) */}
-        <label className="space-y-1 sm:col-span-2">
+        <label className={`space-y-1 ${setSearchTime ? "" : "sm:col-span-2"}`}>
           <span className="text-sm text-gray-600">Ligne (optionnel)</span>
           <input
             value={line}
             onChange={(e) => setLine(e.target.value)}
             className="w-full border p-2 rounded-lg"
-            placeholder="ex: E, A, C1..."
+            placeholder="ex: A, B, C1..."
           />
         </label>
+
+        {setSearchTime && (
+          <div className="space-y-1">
+            <span className="text-sm text-gray-600">Chercher pour</span>
+            <div className="flex gap-2">
+              {setSearchDate && (
+                <input
+                  type="date"
+                  value={formatDateInputValue(searchDate)}
+                  onChange={(e) => handleDateChange(e.target.value)}
+                  className="min-w-0 flex-1 border p-2 rounded-lg"
+                  aria-label="Date de recherche"
+                />
+              )}
+              <input
+                type="time"
+                value={searchTime || ""}
+                onChange={(e) => {
+                  setSearchTime(e.target.value);
+                  if (e.target.value) {
+                    setDepartureTime?.("");
+                    setArrivalTime?.("");
+                  }
+                }}
+                className="min-w-0 flex-1 border p-2 rounded-lg"
+                aria-label="Heure de recherche"
+              />
+            </div>
+          </div>
+        )}
       </div>
-      <div className="space-y-2 mt-4 flex flex-col items-stretch">
+      <div className="space-y-1.5 mt-3 flex flex-col items-stretch">
         <button
           onClick={onSearch}
           disabled={loading || !stopsLoaded}
@@ -276,7 +401,7 @@ export function SearchForm({
       <button
         onClick={onCancel}
         type="button"
-        className="mt-4 w-full text-center text-gray-500 text-sm"
+        className="mt-3 w-full text-center text-gray-500 text-sm"
       >
         Annuler
       </button>
@@ -284,11 +409,16 @@ export function SearchForm({
   );
 }
 
-export function SearchSheet({ isOpen, onClose, children }) {
+export function SearchSheet({
+  isOpen,
+  onClose,
+  children,
+  showBackdrop = true,
+}) {
   return (
     <>
       <div
-        className={`fixed inset-0 z-40 bg-black/40 transition-opacity duration-300 ${isOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+        className={`fixed inset-0 z-40 ${showBackdrop ? "bg-black/40" : "bg-transparent"} transition-opacity duration-300 ${isOpen ? "opacity-100" : "opacity-0 pointer-events-none"}`}
         onClick={onClose}
       />
       <div

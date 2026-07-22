@@ -113,6 +113,19 @@ export default function LineIcon({ lineKey = "", size = "w-6 h-6" }) {
     );
   }
 
+  // Lignes navette relais NAVA / NAVB / NAVC / NAVD / NAVE
+  if (/^NAV[A-E]$/.test(lineKey.toUpperCase())) {
+    return (
+      <img
+        src="/bus_relai.svg"
+        alt={lineKey.toUpperCase()}
+        width={sizePx}
+        height={sizePx}
+        style={{ display: "block", objectFit: "contain" }}
+      />
+    );
+  }
+
   if (!lineData) {
     return (
       <div

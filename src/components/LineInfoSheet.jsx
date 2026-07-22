@@ -29,7 +29,9 @@ export function LineInfoSheet({
       dragVelocityThreshold={200}
       dragCloseThreshold={0.3}
     >
-      <Sheet.Container style={{ borderRadius: "24px 24px 0 0" }}>
+      <Sheet.Container
+        style={{ borderRadius: "24px 24px 0 0", overflow: "hidden" }}
+      >
         <Sheet.Header />
         <Sheet.Content>
           <div className="overflow-y-auto flex-1 px-4 pb-8">

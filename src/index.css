@@ -6,11 +6,312 @@
 
 :root {
   --main-font: "Montserrat", sans-serif;
+  --sheet-bg: #ffffff;
 }
 
 body {
   background: white;
   font-family: var(--main-font);
+}
+
+/* These overrides map the existing utility palette to a cohesive dark surface
+   across pages, bottom sheets and dialogs. */
+.dark {
+  --sheet-bg: #182235;
+}
+.dark body {
+  background: #0f172a;
+  color: #e2e8f0;
+}
+.dark .bg-white {
+  background-color: #182235;
+}
+.dark .bg-white\/90,
+.dark .bg-white\/95 {
+  background-color: rgb(24 34 53 / 0.94);
+}
+.dark .bg-\[\#F8FAFC\],
+.dark .bg-\[\#f5f7fb\] {
+  background-color: #0f172a;
+}
+.dark .bg-gray-50,
+.dark .bg-slate-50 {
+  background-color: #1e293b;
+}
+.dark .bg-gray-100,
+.dark .bg-slate-100 {
+  background-color: #273449;
+}
+.dark .bg-gray-200,
+.dark .bg-slate-200 {
+  background-color: #334155;
+}
+.dark .bg-gray-300,
+.dark .bg-slate-300 {
+  background-color: #475569;
+}
+.dark .border-gray-100,
+.dark .border-gray-200,
+.dark .border-gray-300,
+.dark .border-gray-500,
+.dark .border-slate-100,
+.dark .border-slate-200,
+.dark .border-slate-300,
+.dark .border-slate-500 {
+  border-color: #475569;
+}
+.dark .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
+.dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #475569;
+}
+.dark .text-black,
+.dark .text-gray-900,
+.dark .text-slate-900,
+.dark .text-gray-800,
+.dark .text-slate-800 {
+  color: #f1f5f9;
+}
+.dark .text-gray-700,
+.dark .text-slate-700,
+.dark .text-gray-600,
+.dark .text-slate-600 {
+  color: #cbd5e1;
+}
+.dark .text-gray-500,
+.dark .text-slate-500,
+.dark .text-gray-400,
+.dark .text-slate-400,
+.dark .text-slate-300 {
+  color: #94a3b8;
+}
+.dark .bg-black {
+  background-color: #e2e8f0;
+}
+.dark .hover\:bg-gray-50:hover,
+.dark .hover\:bg-gray-100:hover,
+.dark .hover\:bg-gray-200:hover,
+.dark .hover\:bg-slate-50:hover,
+.dark .hover\:bg-slate-200:hover {
+  background-color: #334155;
+}
+.dark .hover\:text-gray-700:hover,
+.dark .hover\:text-slate-700:hover {
+  color: #e2e8f0;
+}
+
+/* Boutons T1/T2/T3 "configuré mais non sélectionné" (bg-blue-100/text-blue-800) */
+.dark .bg-blue-100 {
+  background-color: #1e3a5f;
+}
+.dark .text-blue-800 {
+  color: #93c5fd;
+}
+.dark .bottom-bar-active {
+  color: #3b82f6;
+}
+.dark .hover\:bg-blue-200:hover {
+  background-color: #26476e;
+}
+
+/* Alertes infotrafic : des tons ambrés plus lisibles sur fond bleu foncé. */
+.dark .bg-amber-50 {
+  background-color: #4a351a;
+}
+.dark .border-amber-200 {
+  border-color: #b7791f;
+}
+.dark .text-amber-800,
+.dark .text-amber-700,
+.dark .text-amber-600 {
+  color: #fed7aa;
+}
+
+/* Form controls: default preflight/browser styling leaves these with a white
+   background and a near-invisible border in dark mode, so set both explicitly
+   in addition to text color. color-scheme flips native pickers (date/time). */
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: #1e293b;
+  color: #e2e8f0;
+  border-color: #475569;
+  color-scheme: dark;
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #64748b;
+}
+.dark input.bg-transparent,
+.dark textarea.bg-transparent,
+.dark select.bg-transparent {
+  background-color: transparent;
+}
+
+.dark .maplibregl-popup-content {
+  background: #182235;
+  color: #e2e8f0;
+}
+
+/* Thème sombre gris, inspiré des surfaces de VS Code. */
+.gray {
+  --sheet-bg: #252526;
+}
+.gray body {
+  background: #1e1e1e;
+  color: #d4d4d4;
+}
+.gray .bg-white {
+  background-color: #252526;
+}
+.gray .bg-white\/90,
+.gray .bg-white\/95 {
+  background-color: rgb(37 37 38 / 0.94);
+}
+.gray .bg-\[\#F8FAFC\],
+.gray .bg-\[\#f5f7fb\] {
+  background-color: #1e1e1e;
+}
+.gray .bg-gray-50,
+.gray .bg-slate-50 {
+  background-color: #2d2d30;
+}
+.gray .bg-gray-100,
+.gray .bg-slate-100 {
+  background-color: #333333;
+}
+.gray .bg-gray-200,
+.gray .bg-slate-200 {
+  background-color: #3e3e42;
+}
+.gray .bg-gray-300,
+.gray .bg-slate-300 {
+  background-color: #505052;
+}
+.gray .border-gray-100,
+.gray .border-gray-200,
+.gray .border-gray-300,
+.gray .border-gray-500,
+.gray .border-slate-100,
+.gray .border-slate-200,
+.gray .border-slate-300,
+.gray .border-slate-500 {
+  border-color: #454545;
+}
+.gray .divide-gray-100 > :not([hidden]) ~ :not([hidden]),
+.gray .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: #454545;
+}
+.gray .text-black,
+.gray .text-gray-900,
+.gray .text-slate-900,
+.gray .text-gray-800,
+.gray .text-slate-800 {
+  color: #f0f0f0;
+}
+.gray .text-gray-700,
+.gray .text-slate-700,
+.gray .text-gray-600,
+.gray .text-slate-600 {
+  color: #cccccc;
+}
+.gray .text-gray-500,
+.gray .text-slate-500,
+.gray .text-gray-400,
+.gray .text-slate-400,
+.gray .text-slate-300 {
+  color: #a6a6a6;
+}
+.gray .bg-black {
+  background-color: #d4d4d4;
+}
+.gray .hover\:bg-gray-50:hover,
+.gray .hover\:bg-gray-100:hover,
+.gray .hover\:bg-gray-200:hover,
+.gray .hover\:bg-slate-50:hover,
+.gray .hover\:bg-slate-200:hover {
+  background-color: #3e3e42;
+}
+.gray .hover\:text-gray-700:hover,
+.gray .hover\:text-slate-700:hover {
+  color: #f0f0f0;
+}
+.gray .bg-blue-100 {
+  background-color: #264f78;
+}
+.gray .text-blue-800 {
+  color: #9cdcfe;
+}
+.gray .bottom-bar-active {
+  color: #3b82f6;
+}
+.gray .hover\:bg-blue-200:hover {
+  background-color: #315d87;
+}
+.gray .bg-amber-50 {
+  background-color: #40351e;
+}
+.gray .border-amber-200 {
+  border-color: #b8862e;
+}
+.gray .text-amber-800,
+.gray .text-amber-700,
+.gray .text-amber-600 {
+  color: #ffd580;
+}
+.gray input,
+.gray select,
+.gray textarea {
+  background-color: #3c3c3c;
+  color: #f0f0f0;
+  border-color: #555555;
+  color-scheme: dark;
+}
+.gray input::placeholder,
+.gray textarea::placeholder {
+  color: #858585;
+}
+.gray input.bg-transparent,
+.gray textarea.bg-transparent,
+.gray select.bg-transparent {
+  background-color: transparent;
+}
+.gray .maplibregl-popup-content {
+  background: #252526;
+  color: #d4d4d4;
+}
+
+/* react-modal-sheet renders its own container/header outside the Tailwind
+   utility classes above, so it needs an explicit dark background too. */
+.react-modal-sheet-container,
+.react-modal-sheet-header {
+  background-color: var(--sheet-bg) !important;
+}
+
+@keyframes tab-icon-select {
+  0% {
+    transform: scale(0.78);
+    opacity: 0.55;
+  }
+
+  72% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+
+  100% {
+    transform: scale(1.1);
+    opacity: 1;
+  }
+}
+
+.animate-tab-icon-select {
+  animation: tab-icon-select 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-tab-icon-select {
+    animation: none;
+  }
 }
 
 .mst-regular {

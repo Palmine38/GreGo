@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { Sheet } from "react-modal-sheet";
+import Navbar from "./navbar.jsx";
+import { applyTheme, normalizeTheme, THEMES } from "./hooks/useTheme.js";
+import { NotificationToast } from "./components/NotificationToast.jsx";
 const DEBUG = true;
 
 const DEFAULTS = {
@@ -8,6 +10,7 @@ const DEFAULTS = {
   walkSpeed: 1.4,
   numItineraries: 10,
   headerLines: "all",
+  theme: "light",
 };
 
 const SLIDER_MAX = 20;
@@ -21,13 +24,8 @@ function itinerariesToSlider(num) {
   return num === NUM_ITINERARIES_MAX ? SLIDER_MAX : num;
 }
 
-export default function Settings({
-  settingsOpen,
-  setSettingsOpen,
-  onSettingsChanged,
-}) {
+export default function Settings() {
   const fileInputRef = useRef(null);
-  const snapshotOnOpen = useRef(null);
   const isFirstRender = useRef(true);
 
   const getInitialSettings = () => {
@@ -40,6 +38,7 @@ export default function Settings({
           walkSpeed: parsed.walkSpeed ?? DEFAULTS.walkSpeed,
           numItineraries: parsed.numItineraries ?? DEFAULTS.numItineraries,
           headerLines: parsed.headerLines ?? DEFAULTS.headerLines,
+          theme: normalizeTheme(parsed.theme),
         };
       }
     } catch (e) {
@@ -53,28 +52,21 @@ export default function Settings({
   const [walkSpeed, setWalkSpeed] = useState(initial.walkSpeed);
   const [numItineraries, setNumItineraries] = useState(initial.numItineraries);
   const [headerLines, setHeaderLines] = useState(initial.headerLines);
+  const [theme, setTheme] = useState(initial.theme);
   const [resetStep, setResetStep] = useState(null); // null | 'warn' | 'confirm'
   const [resetClosing, setResetClosing] = useState(false);
+  const [isBottomBarCompact, setIsBottomBarCompact] = useState(
+    () => window.scrollY > 48,
+  );
+  const [isPreparingTrips, setIsPreparingTrips] = useState(false);
+  const [importError, setImportError] = useState("");
 
   useEffect(() => {
-    if (settingsOpen) {
-      snapshotOnOpen.current = localStorage.getItem("tag-express-settings");
-      if (DEBUG) console.log("⚙️ Snapshot ouverture:", snapshotOnOpen.current);
-    }
-  }, [settingsOpen]);
-
-  const closeSettings = () => {
-    const current = localStorage.getItem("tag-express-settings");
-    if (snapshotOnOpen.current !== current) {
-      if (DEBUG)
-        console.log("⚙️ Settings modifiés → reset cache + re-recherche");
-      localStorage.removeItem("tag-express-cache");
-      onSettingsChanged?.();
-    } else {
-      if (DEBUG) console.log("⚙️ Aucun changement détecté");
-    }
-    setSettingsOpen(false);
-  };
+    const onScroll = () => setIsBottomBarCompact(window.scrollY > 48);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const downloadLocalStorage = () => {
     const data = {};
@@ -106,9 +98,9 @@ export default function Settings({
         }
         alert("localStorage importé avec succès!");
         window.location.reload();
-      } catch (err) {
-        alert(
-          "Erreur lors de l'import du fichier. Assurez-vous que c'est un JSON valide.",
+      } catch {
+        setImportError(
+          "Import impossible : le fichier ne contient pas une sauvegarde JSON valide.",
         );
       }
     };
@@ -138,16 +130,25 @@ export default function Settings({
     }
     localStorage.setItem(
       "tag-express-settings",
-      JSON.stringify({ wheelchair, walkSpeed, numItineraries, headerLines }),
+      JSON.stringify({
+        wheelchair,
+        walkSpeed,
+        numItineraries,
+        headerLines,
+        theme,
+      }),
     );
+    applyTheme(theme);
+    window.dispatchEvent(new Event("tag-express-theme-change"));
     if (DEBUG)
       console.log("⚙️ Settings sauvegardés:", {
         wheelchair,
         walkSpeed,
         numItineraries,
         headerLines,
+        theme,
       });
-  }, [wheelchair, walkSpeed, numItineraries, headerLines]);
+  }, [wheelchair, walkSpeed, numItineraries, headerLines, theme]);
 
   const speedInKmh = (walkSpeed * 3.6).toFixed(1);
   const handleSpeedChange = (kmh) => setWalkSpeed(kmh / 3.6);
@@ -175,186 +176,212 @@ export default function Settings({
 
   return (
     <>
-      <Sheet
-        isOpen={settingsOpen}
-        onClose={closeSettings}
-        snapPoints={[0, 0.6, 1]}
-        initialSnap={1}
-        dragVelocityThreshold={200}
-        dragCloseThreshold={0.3}
-      >
-        <Sheet.Container style={{ borderRadius: "24px 24px 0 0" }}>
-          <Sheet.Header />
-          <Sheet.Content
-            disableDrag
-            style={{ display: "flex", flexDirection: "column" }}
-          >
-            <div className="px-4 pb-6 flex flex-col flex-1 min-h-0">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold">Paramètres</h2>
+      <NotificationToast message={importError} onClose={() => setImportError("")} />
+      <Navbar
+        shiftCompactBarForAction={isPreparingTrips}
+        actionBarFurtherLeft
+        onBeforeTabNavigate={(path) => {
+          if (path !== "/mes-trajets") return false;
+          setIsPreparingTrips(true);
+          return true;
+        }}
+      />
+      <main className="min-h-screen bg-[#F8FAFC] px-4 pb-32 pt-5">
+        <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h1 className="mb-5 text-xl font-bold text-slate-900">Paramètres</h1>
+          <div className="space-y-4">
+            <div className="border-b border-gray-200 pb-4">
+              <span className="block text-sm font-semibold mb-3">
+                Apparence
+              </span>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                 <button
-                  className="text-gray-600 hover:text-gray-900"
-                  onClick={closeSettings}
+                  type="button"
+                  onClick={() => setTheme(THEMES.LIGHT)}
+                  className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${theme === THEMES.LIGHT ? "border-blue-600 bg-blue-50 text-blue-700" : "border-gray-300 text-gray-700 hover:bg-gray-100"}`}
+                  aria-pressed={theme === THEMES.LIGHT}
                 >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth="1.5"
-                    stroke="currentColor"
-                    className="size-6"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="m19.5 8.25-7.5 7.5-7.5-7.5"
-                    />
-                  </svg>
+                  Thème clair
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTheme(THEMES.DARK)}
+                  className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${theme === THEMES.DARK ? "border-blue-500 bg-blue-950 text-blue-300" : "border-gray-300 text-gray-700 hover:bg-gray-100"}`}
+                  aria-pressed={theme === THEMES.DARK}
+                >
+                  Thème bleu foncé
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTheme(THEMES.GRAY)}
+                  className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${theme === THEMES.GRAY ? "border-slate-400 bg-[#3c3c3c] text-slate-100" : "border-gray-300 text-gray-700 hover:bg-gray-100"}`}
+                  aria-pressed={theme === THEMES.GRAY}
+                >
+                  Thème sombre
                 </button>
               </div>
+            </div>
+            <div className="border-b border-gray-200 pb-4">
+              <label className="flex items-center justify-between cursor-pointer">
+                <span className="text-sm font-semibold">Accessibilité PMR</span>
+                <input
+                  type="checkbox"
+                  checked={wheelchair}
+                  onChange={(e) => setWheelchair(e.target.checked)}
+                  className="w-4 h-4 cursor-pointer"
+                />
+              </label>
+              <p className="text-xs text-gray-500 mt-1">
+                Ce paramètre oblige le système à inclure seulement les trajets
+                accessibles aux personnes en fauteuil roulant
+              </p>
+            </div>
 
-              <div className="space-y-4 flex-1 overflow-y-auto min-h-0">
-                <div className="border-b border-gray-200 pb-4">
-                  <label className="flex items-center justify-between cursor-pointer">
-                    <span className="text-sm font-semibold">
-                      Accessibilité PMR
-                    </span>
+            <div className="pb-4">
+              <label className="block text-sm font-semibold mb-2">
+                Vitesse de marche
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  value={speedInKmh}
+                  onChange={(e) =>
+                    handleSpeedChange(parseFloat(e.target.value) || 0)
+                  }
+                  step="0.5"
+                  min="2"
+                  max="20"
+                  style={sliderStyle(parseFloat(speedInKmh), 2, 20)}
+                  className="flex-1"
+                />
+                <span className="text-sm font-semibold w-12 text-right">
+                  {speedInKmh} km/h
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Ce paramètre permet de modifier la vitesse de marche prise en
+                compte dans les calculs. (Défaut : 5 km/h)
+              </p>
+            </div>
+
+            <div className="pb-4">
+              <label className="block text-sm font-semibold mb-2">
+                Nombre d'itinéraires retournés
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="range"
+                  value={sliderVal}
+                  onChange={handleNumItinerariesChange}
+                  min="0"
+                  max={SLIDER_MAX}
+                  style={sliderStyle(sliderVal, 0, SLIDER_MAX)}
+                  className="flex-1"
+                />
+                <span className="text-sm font-semibold w-12 text-right">
+                  {isMax ? "Max" : numItineraries}
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Ce paramètre permet de modifier le nombre d'itinéraires
+                retournés par la recherche.
+              </p>
+            </div>
+
+            <div className="pb-4">
+              <label className="block text-sm font-semibold mb-2">
+                Lignes dans le résumé de recherche
+              </label>
+              <div className="flex flex-col gap-2">
+                {[
+                  { value: "all", label: "Afficher tout" },
+                  {
+                    value: "disrupted",
+                    label: "Seulement les lignes perturbées",
+                  },
+                  { value: "hidden", label: "Masquer" },
+                ].map((opt) => (
+                  <label
+                    key={opt.value}
+                    className="flex items-center gap-2 cursor-pointer"
+                  >
                     <input
-                      type="checkbox"
-                      checked={wheelchair}
-                      onChange={(e) => setWheelchair(e.target.checked)}
-                      className="w-4 h-4 cursor-pointer"
+                      type="radio"
+                      name="headerLines"
+                      value={opt.value}
+                      checked={headerLines === opt.value}
+                      onChange={() => setHeaderLines(opt.value)}
+                      className="w-4 h-4 cursor-pointer accent-blue-600"
                     />
+                    <span className="text-sm">{opt.label}</span>
                   </label>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Ce paramètre oblige le système à inclure seulement les
-                    trajets accessibles aux personnes en fauteuil roulant
-                  </p>
-                </div>
-
-                <div className="pb-4">
-                  <label className="block text-sm font-semibold mb-2">
-                    Vitesse de marche
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="range"
-                      value={speedInKmh}
-                      onChange={(e) =>
-                        handleSpeedChange(parseFloat(e.target.value) || 0)
-                      }
-                      step="0.5"
-                      min="2"
-                      max="20"
-                      style={sliderStyle(parseFloat(speedInKmh), 2, 20)}
-                      className="flex-1"
-                    />
-                    <span className="text-sm font-semibold w-12 text-right">
-                      {speedInKmh} km/h
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Ce paramètre permet de modifier la vitesse de marche prise
-                    en compte dans les calculs. (Défaut : 5 km/h)
-                  </p>
-                </div>
-
-                <div className="pb-4">
-                  <label className="block text-sm font-semibold mb-2">
-                    Nombre d'itinéraires retournés
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="range"
-                      value={sliderVal}
-                      onChange={handleNumItinerariesChange}
-                      min="0"
-                      max={SLIDER_MAX}
-                      style={sliderStyle(sliderVal, 0, SLIDER_MAX)}
-                      className="flex-1"
-                    />
-                    <span className="text-sm font-semibold w-12 text-right">
-                      {isMax ? "Max" : numItineraries}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Ce paramètre permet de modifier le nombre d'itinéraires
-                    retournés par la recherche.
-                  </p>
-                </div>
-
-                <div className="pb-4">
-                  <label className="block text-sm font-semibold mb-2">
-                    Lignes dans le résumé de recherche
-                  </label>
-                  <div className="flex flex-col gap-2">
-                    {[
-                      { value: "all", label: "Afficher tout" },
-                      {
-                        value: "disrupted",
-                        label: "Seulement les lignes en infotrafic",
-                      },
-                      { value: "hidden", label: "Masquer" },
-                    ].map((opt) => (
-                      <label
-                        key={opt.value}
-                        className="flex items-center gap-2 cursor-pointer"
-                      >
-                        <input
-                          type="radio"
-                          name="headerLines"
-                          value={opt.value}
-                          checked={headerLines === opt.value}
-                          onChange={() => setHeaderLines(opt.value)}
-                          className="w-4 h-4 cursor-pointer accent-blue-600"
-                        />
-                        <span className="text-sm">{opt.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="border-t border-gray-200 pt-4">
-                  <label className="block text-sm font-semibold mb-3">
-                    Paramètres avancés
-                  </label>
-                  <div className="space-y-2">
-                    <button
-                      onClick={downloadLocalStorage}
-                      className="w-full py-2 px-3 border border-gray-500 text-gray-800 rounded hover:bg-gray-100 transition-colors text-sm font-semibold"
-                    >
-                      Télécharger les données
-                    </button>
-                    <button
-                      onClick={triggerFileUpload}
-                      className="w-full py-2 px-3 border border-gray-500 text-gray-800 rounded hover:bg-gray-100 transition-colors text-sm font-semibold"
-                    >
-                      Importer des données
-                    </button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".json"
-                      onChange={uploadLocalStorage}
-                      style={{ display: "none" }}
-                    />
-                    <button
-                      onClick={() => {
-                        console.log("🔴 Reset button clicked");
-                        setResetStep("warn");
-                      }}
-                      className="w-full py-2 px-3 border border-red-800 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm font-semibold"
-                    >
-                      Réinitialiser les données
-                    </button>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
-          </Sheet.Content>
-        </Sheet.Container>
-        <Sheet.Backdrop onTap={closeSettings} />
-      </Sheet>
+
+            <div className="border-t border-gray-200 pt-4">
+              <label className="block text-sm font-semibold mb-3">
+                Paramètres avancés
+              </label>
+              <div className="space-y-2">
+                <button
+                  onClick={downloadLocalStorage}
+                  className="w-full py-2 px-3 border border-gray-500 text-gray-800 rounded hover:bg-gray-100 transition-colors text-sm font-semibold"
+                >
+                  Télécharger les données
+                </button>
+                <button
+                  onClick={triggerFileUpload}
+                  className="w-full py-2 px-3 border border-gray-500 text-gray-800 rounded hover:bg-gray-100 transition-colors text-sm font-semibold"
+                >
+                  Importer des données
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json"
+                  onChange={uploadLocalStorage}
+                  style={{ display: "none" }}
+                />
+                <button
+                  onClick={() => {
+                    console.log("🔴 Reset button clicked");
+                    setResetStep("warn");
+                  }}
+                  className="w-full py-2 px-3 border border-red-800 bg-red-600 text-white rounded hover:bg-red-700 transition-colors text-sm font-semibold"
+                >
+                  Réinitialiser les données
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <div
+        aria-hidden="true"
+        className={`pointer-events-none fixed z-40 flex flex-col items-center justify-center rounded-full border border-blue-300 bg-blue-600 text-white transition-[width,height,bottom,right,opacity,transform] duration-300 ease-in-out ${
+          isBottomBarCompact ? "size-14" : "size-16"
+        } ${isPreparingTrips ? "scale-100 opacity-100" : "scale-90 opacity-0"}`}
+        style={{
+          bottom: isBottomBarCompact
+            ? "calc(1rem + env(safe-area-inset-bottom))"
+            : "calc(1.375rem + env(safe-area-inset-bottom))",
+          right: isBottomBarCompact
+            ? "max(1rem, calc((100% - 13rem) / 2 - 2.5rem))"
+            : "max(1rem, calc((100% - 15rem) / 2 - 3rem))",
+        }}
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          className={isBottomBarCompact ? "size-5" : "size-7"}
+        >
+          <path d="m5.433 13.917 1.262-3.155A4 4 0 0 1 7.58 9.42l6.92-6.918a2.121 2.121 0 0 1 3 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 0 1-.65-.65Z" />
+          <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0 0 10 3H4.75A2.75 2.75 0 0 0 2 5.75v9.5A2.75 2.75 0 0 0 4.75 18h9.5A2.75 2.75 0 0 0 17 15.25V10a.75.75 0 0 0-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5Z" />
+        </svg>
+      </div>
 
       {resetStep &&
         createPortal(

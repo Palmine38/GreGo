@@ -5,9 +5,13 @@ import { formatTimeUntil } from "../utils/journey.js";
 import MapLibreMap, { Marker, Source, Layer } from "react-map-gl/maplibre";
 import LineIcon, { LINE_COLORS, preloadLineData } from "./lines-icons.jsx";
 import { Sheet } from "react-modal-sheet";
+import lineB from "./lineB.json";
+import { useTheme } from "../hooks/useTheme.js";
 
-const MAPTILER_STYLE_URL =
+const MAPTILER_STYLE_URL_LIGHT =
   "https://api.maptiler.com/maps/019d0d02-359b-7f4b-a797-bdeabca9dce3/style.json?key=7TQErbyvEqFlis3QMmSl";
+const MAPTILER_STYLE_URL_DARK =
+  "https://api.maptiler.com/maps/019f7c73-0431-726f-ae5d-598a16a06771/style.json?key=7TQErbyvEqFlis3QMmSl";
 
 const ArrowIcon = () => (
   <svg
@@ -54,10 +58,321 @@ function decodePolyline(encoded) {
   return coords;
 }
 
+// OTP fournit parfois une géométrie qui s'arrête à quelques mètres de la
+// position déclarée de l'arrêt. On recale le tracé affiché sur ces positions.
+const STOP_SNAP_DISTANCE = 0.0007; // environ 75 m
+function magnetizeLegGeometry(leg) {
+  if (!leg.legGeometry?.points) return [];
+
+  const coords = decodePolyline(leg.legGeometry.points);
+  if (!coords.length) return coords;
+
+  const snapIntermediateStop = (stop) => {
+    if (!Number.isFinite(stop?.lon) || !Number.isFinite(stop?.lat)) return;
+
+    let closestIndex = 0;
+    let closestDistance = Infinity;
+    coords.forEach(([lon, lat], index) => {
+      const distance = (lon - stop.lon) ** 2 + (lat - stop.lat) ** 2;
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = index;
+      }
+    });
+
+    if (closestDistance <= STOP_SNAP_DISTANCE ** 2) {
+      coords[closestIndex] = [stop.lon, stop.lat];
+    }
+  };
+
+  (leg.intermediateStops || []).forEach(snapIntermediateStop);
+  if (Number.isFinite(leg.from?.lon) && Number.isFinite(leg.from?.lat)) {
+    coords[0] = [leg.from.lon, leg.from.lat];
+  }
+  if (Number.isFinite(leg.to?.lon) && Number.isFinite(leg.to?.lat)) {
+    coords[coords.length - 1] = [leg.to.lon, leg.to.lat];
+  }
+  return coords;
+}
+
 function midpoint(coords) {
   if (!coords.length) return null;
   return coords[Math.floor(coords.length / 2)];
 }
+
+function cleanStopName(name) {
+  return name?.replace(/^[^,]+,\s*/, "") || "";
+}
+
+function getLegLineName(leg) {
+  return (leg.routeShortName || leg.route || leg.routeId || "")
+    .replace("SEM:", "")
+    .toUpperCase();
+}
+
+// La géométrie fournie par OTP peut être approximative pour certaines lignes.
+// Pour la ligne B, on utilise le tracé de référence embarqué dans l'application.
+const LINE_B_COORDINATES = lineB.features?.[0]?.geometry?.coordinates || [];
+
+function nearestCoordinate(coords, stop) {
+  if (!Number.isFinite(stop?.lon) || !Number.isFinite(stop?.lat)) return null;
+
+  let index = -1;
+  let distance = Infinity;
+  coords.forEach(([lon, lat], currentIndex) => {
+    const currentDistance = Math.hypot(lon - stop.lon, lat - stop.lat);
+    if (currentDistance < distance) {
+      index = currentIndex;
+      distance = currentDistance;
+    }
+  });
+  return index >= 0 ? { index, distance } : null;
+}
+
+function getLineBSegment(leg) {
+  const from = nearestCoordinate(LINE_B_COORDINATES, leg.from);
+  const to = nearestCoordinate(LINE_B_COORDINATES, leg.to);
+  // Les arrêts doivent correspondre au tracé B : tolérance totale d'environ 300 m.
+  if (!from || !to || from.distance + to.distance > 0.003) return null;
+
+  const start = Math.min(from.index, to.index);
+  const end = Math.max(from.index, to.index);
+  const coords = LINE_B_COORDINATES.slice(start, end + 1);
+  if (from.index > to.index) coords.reverse();
+
+  const snapStop = (stop) => {
+    const closest = nearestCoordinate(coords, stop);
+    if (closest && closest.distance <= STOP_SNAP_DISTANCE) {
+      coords[closest.index] = [stop.lon, stop.lat];
+    }
+  };
+  (leg.intermediateStops || []).forEach(snapStop);
+  snapStop(leg.from);
+  snapStop(leg.to);
+  return coords;
+}
+
+function getLegGeometry(leg) {
+  if (leg.mode !== "WALK" && getLegLineName(leg) === "B") {
+    return getLineBSegment(leg) || magnetizeLegGeometry(leg);
+  }
+  return magnetizeLegGeometry(leg);
+}
+
+function formatClock(value) {
+  if (!value) return "";
+  return new Date(value).toLocaleTimeString("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatRemaining(target, now) {
+  const minutes = Math.max(0, Math.ceil((new Date(target) - now) / 60000));
+  if (minutes <= 0) return "maintenant";
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours}h${String(rest).padStart(2, "0")}` : `${hours}h`;
+}
+
+function formatLegDuration(leg) {
+  const minutes = Math.max(
+    1,
+    Math.round((new Date(leg.endTime) - new Date(leg.startTime)) / 60000),
+  );
+  return minutes < 60
+    ? `${minutes} min`
+    : `${Math.floor(minutes / 60)} h${minutes % 60 ? ` ${minutes % 60}` : ""}`;
+}
+
+/* ---------------------------------------------------------------------
+ * Bouton "Lancer le trajet" et panneau de navigation associé — désactivés.
+ * (fonctions et composants commentés ci-dessous)
+ * ---------------------------------------------------------------------
+
+function getStartInstruction(journey, now) {
+  const firstLeg = journey?.allLegs?.[0];
+  if (!firstLeg) return null;
+
+  const departureIn = formatRemaining(firstLeg.startTime, now);
+  if (firstLeg.mode === "WALK") {
+    const stopName = cleanStopName(firstLeg.to?.name) || "votre prochain arrêt";
+    return {
+      title: `Marchez jusqu’à ${stopName}`,
+      subtitle:
+        departureIn === "maintenant"
+          ? `${formatLegDuration(firstLeg)} de marche`
+          : `Partez dans ${departureIn} · ${formatLegDuration(firstLeg)} de marche`,
+      buttonLabel:
+        departureIn === "maintenant"
+          ? "Commencer à marcher"
+          : `Partir dans ${departureIn}`,
+    };
+  }
+
+  const lineName = getLegLineName(firstLeg);
+  const stopName = cleanStopName(firstLeg.from?.name) || "votre arrêt";
+  return {
+    title:
+      departureIn === "maintenant"
+        ? "Partez maintenant"
+        : `Partez dans ${departureIn}`,
+    subtitle: `Prenez la ligne ${lineName} à ${stopName}`,
+    buttonLabel:
+      departureIn === "maintenant"
+        ? "Démarrer le trajet"
+        : `Partir dans ${departureIn}`,
+  };
+}
+
+function getNavigationState(journey, now) {
+  const legs = journey?.allLegs || [];
+  if (!legs.length) return null;
+
+  const firstStart = new Date(legs[0].startTime);
+  const lastEnd = new Date(legs[legs.length - 1].endTime);
+
+  if (now < firstStart) {
+    const startInstruction = getStartInstruction(journey, now);
+    return {
+      status: "waiting",
+      activeLeg: legs[0],
+      nextLeg: legs[1],
+      progress: 0,
+      title: startInstruction?.title || "Préparez-vous à partir",
+      subtitle:
+        startInstruction?.subtitle ||
+        `Départ à ${formatClock(legs[0].startTime)}`,
+      etaLabel: `dans ${formatRemaining(legs[0].startTime, now)}`,
+    };
+  }
+
+  if (now >= lastEnd) {
+    return {
+      status: "arrived",
+      activeLeg: legs[legs.length - 1],
+      nextLeg: null,
+      progress: 100,
+      title: "Vous êtes arrivé",
+      subtitle: cleanStopName(journey.arrName),
+      etaLabel: formatClock(lastEnd),
+    };
+  }
+
+  const activeIndex = legs.findIndex((leg) => {
+    const start = new Date(leg.startTime);
+    const end = new Date(leg.endTime);
+    return now >= start && now < end;
+  });
+  const index =
+    activeIndex >= 0
+      ? activeIndex
+      : legs.findIndex((leg) => now < new Date(leg.startTime));
+  const activeLeg = legs[Math.max(0, index)];
+  const nextLeg = legs[index + 1] || null;
+  const start = new Date(activeLeg.startTime);
+  const end = new Date(activeLeg.endTime);
+  const progress = Math.min(
+    100,
+    Math.max(0, ((now - start) / Math.max(1, end - start)) * 100),
+  );
+
+  if (activeLeg.mode === "WALK") {
+    return {
+      status: "walking",
+      activeLeg,
+      nextLeg,
+      progress,
+      title: `Marchez vers ${cleanStopName(activeLeg.to?.name)}`,
+      subtitle: `Arrivée à ${formatClock(activeLeg.endTime)}`,
+      etaLabel: formatRemaining(activeLeg.endTime, now),
+    };
+  }
+
+  const lineName = getLegLineName(activeLeg);
+  const direction = activeLeg.headsign || activeLeg.to?.name;
+  return {
+    status: "transit",
+    activeLeg,
+    nextLeg,
+    progress,
+    title: `Prenez la ligne ${lineName}`,
+    subtitle: direction ? `Direction ${cleanStopName(direction)}` : "",
+    etaLabel: formatRemaining(activeLeg.endTime, now),
+  };
+}
+
+function JourneyNavigationPanel({ journey, currentTime, onStop }) {
+  const nav = getNavigationState(journey, currentTime);
+  if (!nav) return null;
+
+  const nextLabel = nav.nextLeg
+    ? nav.nextLeg.mode === "WALK"
+      ? `Puis marcher vers ${cleanStopName(nav.nextLeg.to?.name)}`
+      : `Puis prendre ${getLegLineName(nav.nextLeg)}`
+    : "Dernière étape";
+
+  return (
+    <div className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-sm">
+      <div className="px-4 py-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] uppercase tracking-widest text-slate-400">
+              Trajet démarré
+            </p>
+            <h3 className="mt-1 text-lg font-bold leading-tight">
+              {nav.title}
+            </h3>
+            {nav.subtitle && (
+              <p className="mt-1 text-sm text-slate-600">{nav.subtitle}</p>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-4 h-1.5 rounded-full bg-slate-100">
+          <div
+            className="h-full rounded-full bg-blue-600 transition-all duration-500"
+            style={{ width: `${nav.progress}%` }}
+          />
+        </div>
+
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <p className="text-sm text-slate-600">{nextLabel}</p>
+          <button
+            type="button"
+            onClick={onStop}
+            className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+          >
+            Arrêter
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function JourneyStartPanel({ onStart }) {
+  return (
+    <button
+      type="button"
+      onClick={onStart}
+      className="mb-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="currentColor"
+        className="size-4"
+      >
+        <path d="M8 5.14v13.72a1 1 0 0 0 1.52.85l11.23-6.86a1 1 0 0 0 0-1.7L9.52 4.29A1 1 0 0 0 8 5.14Z" />
+      </svg>
+      Lancer le trajet
+    </button>
+  );
+}
+
+--------------------------------------------------------------------- */
 
 /**
  * Carte inline déroulante pour un itinéraire.
@@ -68,6 +383,9 @@ export function InlineJourneyMap({ journey, lineColors, isOpen }) {
   const [zoom, setZoom] = useState(13);
   const [iconsReady, setIconsReady] = useState(false);
   const [mapMounted, setMapMounted] = useState(false);
+  const theme = useTheme();
+  const mapStyle =
+    theme === "dark" ? MAPTILER_STYLE_URL_DARK : MAPTILER_STYLE_URL_LIGHT;
 
   // On monte la carte dès le premier open pour éviter de la re-créer
   useEffect(() => {
@@ -92,10 +410,16 @@ export function InlineJourneyMap({ journey, lineColors, isOpen }) {
 
   const allLegs = journey.allLegs || [];
   const transitLegs = allLegs.filter((leg) => leg.mode !== "WALK");
+  const vectorEndpoints = allLegs.flatMap((leg, legIndex) => {
+    const coords = getLegGeometry(leg);
+    if (coords.length < 2) return [];
+    return [
+      { coords: coords[0], type: "start", legIndex },
+      { coords: coords[coords.length - 1], type: "end", legIndex },
+    ];
+  });
 
-  const allCoords = allLegs.flatMap((leg) =>
-    leg.legGeometry?.points ? decodePolyline(leg.legGeometry.points) : [],
-  );
+  const allCoords = allLegs.flatMap(getLegGeometry);
   const lats = allCoords.map(([, lat]) => lat);
   const lons = allCoords.map(([lon]) => lon);
   const bounds =
@@ -109,10 +433,11 @@ export function InlineJourneyMap({ journey, lineColors, isOpen }) {
   const departureMarker = transitLegs[0]
     ? { lon: transitLegs[0].from?.lon, lat: transitLegs[0].from?.lat }
     : null;
-  const arrivalMarker = transitLegs[transitLegs.length - 1]
+  const arrivalMarker = allLegs[allLegs.length - 1]
     ? {
-        lon: transitLegs[transitLegs.length - 1].to?.lon,
-        lat: transitLegs[transitLegs.length - 1].to?.lat,
+        lon: allLegs[allLegs.length - 1].to?.lon,
+        lat: allLegs[allLegs.length - 1].to?.lat,
+        name: allLegs[allLegs.length - 1].to?.name,
       }
     : null;
 
@@ -125,23 +450,32 @@ export function InlineJourneyMap({ journey, lineColors, isOpen }) {
     }))
     .filter((m) => m.lon && m.lat);
 
-  const allIntermediateStops = transitLegs.flatMap((leg) => {
+  const allTransitStops = transitLegs.flatMap((leg) => {
     const lineName = (leg.routeShortName || leg.route || leg.routeId || "")
       .replace("SEM:", "")
       .toUpperCase();
     const color = LINE_COLORS[lineName] || lineColors?.[lineName] || "#94A3B8";
-    return (leg.intermediateStops || []).map((s) => ({
-      lon: s.lon,
-      lat: s.lat,
-      name: s.name,
-      color,
-    }));
+    return [...(leg.intermediateStops || []), leg.to]
+      .filter((stop) => stop?.lon && stop?.lat)
+      .map((s) => ({
+        lon: s.lon,
+        lat: s.lat,
+        name: s.name,
+        color,
+      }));
   });
+
+  const walkTransitionStops = allLegs
+    .flatMap((leg, index) =>
+      leg.mode !== "WALK" && allLegs[index + 1]?.mode === "WALK"
+        ? [leg.to]
+        : [],
+    )
+    .filter((stop) => stop?.lon && stop?.lat && stop?.name);
 
   const legMidpoints = transitLegs
     .map((leg) => {
-      if (!leg.legGeometry?.points) return null;
-      const coords = decodePolyline(leg.legGeometry.points);
+      const coords = getLegGeometry(leg);
       const mid = midpoint(coords);
       if (!mid) return null;
       const lineName = (leg.routeShortName || leg.route || leg.routeId || "")
@@ -190,7 +524,7 @@ export function InlineJourneyMap({ journey, lineColors, isOpen }) {
           {mapMounted && (
             <MapLibreMap
               ref={mapRef}
-              mapStyle={MAPTILER_STYLE_URL}
+              mapStyle={mapStyle}
               initialViewState={
                 bounds
                   ? { bounds, fitBoundsOptions: { padding: 32 } }
@@ -201,8 +535,8 @@ export function InlineJourneyMap({ journey, lineColors, isOpen }) {
             >
               {/* Tracés */}
               {allLegs.map((leg, i) => {
-                if (!leg.legGeometry?.points) return null;
-                const coords = decodePolyline(leg.legGeometry.points);
+                const coords = getLegGeometry(leg);
+                if (coords.length < 2) return null;
                 const isWalk = leg.mode === "WALK";
                 const lineName = (
                   leg.routeShortName ||
@@ -239,28 +573,47 @@ export function InlineJourneyMap({ journey, lineColors, isOpen }) {
                 );
               })}
 
-              {/* Arrêts intermédiaires (zoom >= 16) */}
-              {zoom >= 16 &&
-                allIntermediateStops.map((m, i) => (
-                  <Marker
-                    key={`stop-${i}`}
-                    longitude={m.lon}
-                    latitude={m.lat}
-                    anchor="center"
-                  >
-                    <div
-                      title={m.name}
-                      style={{
-                        width: 8,
-                        height: 8,
-                        borderRadius: "50%",
-                        backgroundColor: "white",
-                        border: `2px solid ${m.color}`,
-                        boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
-                      }}
-                    />
-                  </Marker>
-                ))}
+              {/* Arrêts intermédiaires de transit */}
+              {vectorEndpoints.map((endpoint) => (
+                <Marker
+                  key={`vector-endpoint-${endpoint.legIndex}-${endpoint.type}`}
+                  longitude={endpoint.coords[0]}
+                  latitude={endpoint.coords[1]}
+                  anchor="center"
+                >
+                  <div
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: "50%",
+                      backgroundColor: "white",
+                      border: "2px solid #64748B",
+                      boxShadow: "0 1px 4px rgba(0,0,0,0.35)",
+                    }}
+                  />
+                </Marker>
+              ))}
+
+              {allTransitStops.map((m, i) => (
+                <Marker
+                  key={`stop-${i}`}
+                  longitude={m.lon}
+                  latitude={m.lat}
+                  anchor="center"
+                >
+                  <div
+                    title={m.name}
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: "50%",
+                      backgroundColor: "white",
+                      border: `2px solid ${m.color}`,
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+                    }}
+                  />
+                </Marker>
+              ))}
 
               {/* Correspondances */}
               {transferMarkers.map((m, i) => (
@@ -292,11 +645,7 @@ export function InlineJourneyMap({ journey, lineColors, isOpen }) {
                     lat: transitLegs[0].from?.lat,
                     name: transitLegs[0].from?.name,
                   },
-                  transitLegs.length > 0 && {
-                    lon: transitLegs[transitLegs.length - 1].to?.lon,
-                    lat: transitLegs[transitLegs.length - 1].to?.lat,
-                    name: transitLegs[transitLegs.length - 1].to?.name,
-                  },
+                  arrivalMarker,
                 ]
                   .filter((s) => s && s.lon && s.lat && s.name)
                   .map((s, i) => (
@@ -326,39 +675,39 @@ export function InlineJourneyMap({ journey, lineColors, isOpen }) {
                     </Marker>
                   ))}
 
-              {/* Noms arrêts intermédiaires — zoom >= 14 */}
+              {/* Noms des correspondances et des fins de tronçons transit */}
               {zoom >= 14 &&
-                transitLegs.slice(1).map(
-                  (leg, i) =>
-                    leg.from?.lon &&
-                    leg.from?.lat &&
-                    leg.from?.name && (
-                      <Marker
-                        key={`midlabel-${i}`}
-                        longitude={leg.from.lon}
-                        latitude={leg.from.lat}
-                        anchor="top"
+                [
+                  ...transitLegs.slice(1).map((leg) => leg.from),
+                  ...walkTransitionStops,
+                ]
+                  .filter((stop) => stop?.lon && stop?.lat && stop?.name)
+                  .map((stop, i) => (
+                    <Marker
+                      key={`midlabel-${i}`}
+                      longitude={stop.lon}
+                      latitude={stop.lat}
+                      anchor="top"
+                    >
+                      <div
+                        style={{
+                          marginTop: 6,
+                          background: "white",
+                          borderRadius: 6,
+                          padding: "2px 6px",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: "#334155",
+                          boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
+                          whiteSpace: "nowrap",
+                          fontFamily: "Montserrat, sans-serif",
+                          pointerEvents: "none",
+                        }}
                       >
-                        <div
-                          style={{
-                            marginTop: 6,
-                            background: "white",
-                            borderRadius: 6,
-                            padding: "2px 6px",
-                            fontSize: 11,
-                            fontWeight: 600,
-                            color: "#334155",
-                            boxShadow: "0 1px 4px rgba(0,0,0,0.18)",
-                            whiteSpace: "nowrap",
-                            fontFamily: "Montserrat, sans-serif",
-                            pointerEvents: "none",
-                          }}
-                        >
-                          {leg.from.name.replace(/^[^,]+,\s*/, "")}
-                        </div>
-                      </Marker>
-                    ),
-                )}
+                        {stop.name.replace(/^[^,]+,\s*/, "")}
+                      </div>
+                    </Marker>
+                  ))}
 
               {/* Départ / arrivée */}
               {[departureMarker, arrivalMarker].filter(Boolean).map((m, i) => (
@@ -424,12 +773,16 @@ export function JourneyDetailsSheet({
   lineColors,
   getLineDisruptions,
   hideBackdrop = false,
+  hideMap = false,
+  snapPoints = [0, 0.6, 1],
+  initialSnap = 1,
   onLineClick,
 }) {
   const currentTime = useCurrentTime();
   const [height, setHeight] = useState(60);
   const [mapOpen, setMapOpen] = useState(false);
-  const [currentSnap, setCurrentSnap] = useState(1);
+  // const [tripStarted, setTripStarted] = useState(false); // bouton "Lancer le trajet" désactivé
+  const [currentSnap, setCurrentSnap] = useState(initialSnap);
   const scrollRef = useRef(null);
 
   // Reset quand un nouveau trajet est sélectionné
@@ -437,6 +790,8 @@ export function JourneyDetailsSheet({
     if (journey) {
       setHeight(60);
       setMapOpen(false);
+      // setTripStarted(false); // bouton "Lancer le trajet" désactivé
+      setCurrentSnap(initialSnap);
     }
   }, [journey]);
 
@@ -453,11 +808,17 @@ export function JourneyDetailsSheet({
       <Sheet
         isOpen={isOpen}
         onClose={onClose}
-        snapPoints={[0, 0.6, 1]}
-        initialSnap={1}
+        snapPoints={snapPoints}
+        initialSnap={initialSnap}
         onSnap={(snapIndex) => setCurrentSnap(snapIndex)}
       >
-        <Sheet.Container style={{ borderRadius: "24px 24px 0 0" }}>
+        <Sheet.Container
+          style={{
+            borderRadius: "24px 24px 0 0",
+            backgroundColor: "var(--sheet-bg)",
+            overflow: "hidden",
+          }}
+        >
           <Sheet.Header />
           <Sheet.Content
             disableDrag={(state) => state.scrollPosition !== "top"}
@@ -531,66 +892,89 @@ export function JourneyDetailsSheet({
                 </div>
               </div>
 
-              <button
-                onClick={handleToggleMap}
-                className="flex flex-shrink-0 items-center gap-1.5 text-xs font-semibold mb-3 transition-colors"
-                style={{ color: mapOpen ? "#2563EB" : "#3B82F6" }}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                  className="w-4 h-4"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M9 6.75V15m6-6v8.25m.503 3.498 4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 0 0-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c-.317-.159.69-.159 1.006 0l4.994 2.497c.317.159.69.159 1.006 0Z"
-                  />
-                </svg>
-                {mapOpen ? "Masquer la carte" : "Voir sur la carte"}
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  className="w-3.5 h-3.5 ml-0.5"
-                  style={{
-                    transform: mapOpen ? "rotate(180deg)" : "rotate(0deg)",
-                    transition:
-                      "transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)",
-                  }}
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              </button>
-              {/* Carte inline — HORS du scroll aussi, juste en dessous du bouton */}
-              <div className="flex-shrink-0 px-4">
-                <InlineJourneyMap
+              {/* Bouton "Lancer le trajet" / panneau de navigation — désactivé
+              {tripStarted ? (
+                <JourneyNavigationPanel
                   journey={journey}
-                  lineColors={lineColors}
-                  isOpen={mapOpen}
+                  currentTime={currentTime}
+                  onStop={() => setTripStarted(false)}
                 />
-              </div>
+              ) : (
+                <JourneyStartPanel
+                  onStart={() => {
+                    setTripStarted(true);
+                    if (height < 80) setHeight(85);
+                  }}
+                />
+              )}
+              */}
+
+              {!hideMap && (
+                <>
+                  <button
+                    onClick={handleToggleMap}
+                    className="flex flex-shrink-0 items-center gap-1.5 text-xs font-semibold mb-7 transition-colors"
+                    style={{ color: mapOpen ? "#2563EB" : "#3B82F6" }}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                      className="w-4 h-4"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M9 6.75V15m6-6v8.25m.503 3.498 4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 0 0-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c-.317-.159.69-.159 1.006 0l4.994 2.497c.317.159.69.159 1.006 0Z"
+                      />
+                    </svg>
+
+                    {mapOpen ? "Masquer la carte" : "Voir sur la carte"}
+
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      className="w-3.5 h-3.5 ml-0.5"
+                      style={{
+                        transform: mapOpen ? "rotate(180deg)" : "rotate(0deg)",
+                        transition:
+                          "transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)",
+                      }}
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </button>
+                  {/* Carte inline*/}
+                  <div className="flex-shrink-0 px-4">
+                    <InlineJourneyMap
+                      journey={journey}
+                      lineColors={lineColors}
+                      isOpen={mapOpen}
+                    />
+                  </div>
+                </>
+              )}
 
               <JourneyTimeline
                 journey={journey}
                 lineColors={lineColors}
                 getLineDisruptions={getLineDisruptions}
-                onOpenMap={handleToggleMap}
-                mapOpen={mapOpen}
+                onOpenMap={hideMap ? undefined : handleToggleMap}
+                mapOpen={!hideMap && mapOpen}
               />
 
               <div style={{ height: "30vh" }} />
             </div>
           </Sheet.Content>
         </Sheet.Container>
-        <Sheet.Backdrop onTap={onClose} />
+        {!hideBackdrop && <Sheet.Backdrop onTap={onClose} />}
       </Sheet>
     </>
   );

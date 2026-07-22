@@ -28,7 +28,8 @@ export const formatTimeUntil = (timeStr, now = new Date()) => {
   if (diffMinutes < 1) return `À l'approche`;
   const diffHours = Math.floor(diffMinutes / 60);
   const diffMins = Math.floor(diffMinutes % 60);
-  if (diffHours > 0 && diffMins > 0) return `dans ${diffHours}h${diffMins}`;
+  if (diffHours > 0 && diffMins > 0)
+    return `dans ${diffHours}h${String(diffMins).padStart(2, "0")}`;
   if (diffHours > 0) return `dans ${diffHours} h`;
   return `dans ${Math.floor(diffMinutes)} min`;
 };
@@ -37,17 +38,36 @@ export const formatTimeUntil = (timeStr, now = new Date()) => {
 export const removeAccents = (str) =>
   str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 
+// ─── Construction de l'identifiant de lieu pour OTP ─────────────────────────
+// En pointant OTP vers le cluster/station (id déjà préfixé "SEM:..." par
+// l'API mobilites-m), plutôt qu'une plateforme précise en lat/lon, OTP
+// choisit lui-même le bon quai selon la ligne retenue pour l'itinéraire —
+// ce qui évite les faux legs "WALK" entre deux quais du même arrêt.
+//
+// `position` doit être un objet { name, clusterId, lat, lon } — voir
+// useStops.js, où clusterId provient du champ `id` renvoyé par
+// /routes/SEM:{l}/clusters (déjà au format "SEM:XXXXX").
+export const otpPlaceParam = (position) => {
+  if (!position) return "";
+  if (position.clusterId) {
+    return `${position.name}::${position.clusterId}`; // ex: "Alsace-Lorraine::SEM:ALSACELO"
+  }
+  // fallback si jamais clusterId indisponible
+  return `${position.name}::${position.lat},${position.lon}`;
+};
+
 // ─── Construction des params API OTP ────────────────────────────────────────
 export const buildOtpParams = ({
   fromCoords,
   toCoords,
   queryTime,
   settings,
+  arriveBy = false,
 }) => {
   return new URLSearchParams({
     fromPlace: fromCoords,
     toPlace: toCoords,
-    arriveBy: "false",
+    arriveBy: String(arriveBy),
     time: queryTime.toTimeString().substr(0, 5),
     date: queryTime.toISOString().substr(0, 10),
     routerId: "default",
@@ -113,9 +133,15 @@ export const parseItinerary = (it, { depName, arrName, lineFilter }) => {
 
 export const filterByLine = (items, lineFilter) => {
   if (!lineFilter?.trim()) return items;
-  const target = lineFilter.toUpperCase();
+  const targets = lineFilter
+    .split(/[,;]+/)
+    .map((value) => value.trim().toUpperCase())
+    .filter(Boolean);
+
   return items.filter((item) =>
-    item.lineKeys.some((lk) => lk === target || lk.startsWith(target)),
+    item.lineKeys.some((lk) =>
+      targets.some((target) => lk === target || lk.startsWith(target)),
+    ),
   );
 };
 
