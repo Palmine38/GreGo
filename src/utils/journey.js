@@ -20,7 +20,14 @@ export const getMinutesUntil = (timeStr, now = new Date()) => {
   if (Number.isNaN(hours) || Number.isNaN(mins)) return -Infinity;
   const target = new Date(now);
   target.setHours(hours, mins, 0, 0);
-  return (target - now) / 60000;
+  let diff = (target - now) / 60000;
+
+  // On décale de 24h si le départ est prévu après minuit (ex: maintenant 23h50, départ 00h10)
+  if (diff < -12 * 60) {
+    diff += 24 * 60;
+  }
+
+  return diff;
 };
 
 export const formatTimeUntil = (timeStr, now = new Date()) => {

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { JourneyTimeline } from "./JourneyTimeline.jsx";
 import { useCurrentTime } from "../hooks/useCurrentTime.js";
+import { useSettings } from "../hooks/useSettings.js";
 import { formatTimeUntil } from "../utils/journey.js";
 import MapLibreMap, { Marker, Source, Layer } from "react-map-gl/maplibre";
 import LineIcon, { LINE_COLORS, preloadLineData } from "./lines-icons.jsx";
@@ -378,14 +379,19 @@ function JourneyStartPanel({ onStart }) {
  * Carte inline déroulante pour un itinéraire.
  * S'affiche/masque avec une animation CSS height.
  */
-export function InlineJourneyMap({ journey, lineColors, isOpen }) {
+export function InlineJourneyMap({
+  journey,
+  lineColors,
+  isOpen,
+  showIntermediateStops = true,
+}) {
   const mapRef = useRef(null);
   const [zoom, setZoom] = useState(13);
   const [iconsReady, setIconsReady] = useState(false);
   const [mapMounted, setMapMounted] = useState(false);
   const theme = useTheme();
   const mapStyle =
-    theme === "dark" ? MAPTILER_STYLE_URL_DARK : MAPTILER_STYLE_URL_LIGHT;
+    theme !== "light" ? MAPTILER_STYLE_URL_DARK : MAPTILER_STYLE_URL_LIGHT;
 
   // On monte la carte dès le premier open pour éviter de la re-créer
   useEffect(() => {
@@ -450,7 +456,7 @@ export function InlineJourneyMap({ journey, lineColors, isOpen }) {
     }))
     .filter((m) => m.lon && m.lat);
 
-  const allTransitStops = transitLegs.flatMap((leg) => {
+  const allTransitStops = showIntermediateStops ? transitLegs.flatMap((leg) => {
     const lineName = (leg.routeShortName || leg.route || leg.routeId || "")
       .replace("SEM:", "")
       .toUpperCase();
@@ -463,7 +469,7 @@ export function InlineJourneyMap({ journey, lineColors, isOpen }) {
         name: s.name,
         color,
       }));
-  });
+  }) : [];
 
   const walkTransitionStops = allLegs
     .flatMap((leg, index) =>
@@ -779,6 +785,7 @@ export function JourneyDetailsSheet({
   onLineClick,
 }) {
   const currentTime = useCurrentTime();
+  const { settings } = useSettings();
   const [height, setHeight] = useState(60);
   const [mapOpen, setMapOpen] = useState(false);
   // const [tripStarted, setTripStarted] = useState(false); // bouton "Lancer le trajet" désactivé
@@ -957,6 +964,7 @@ export function JourneyDetailsSheet({
                       journey={journey}
                       lineColors={lineColors}
                       isOpen={mapOpen}
+                      showIntermediateStops={settings.showIntermediateStops}
                     />
                   </div>
                 </>
@@ -966,6 +974,8 @@ export function JourneyDetailsSheet({
                 journey={journey}
                 lineColors={lineColors}
                 getLineDisruptions={getLineDisruptions}
+                showDisruptions={settings.showJourneyDisruptions}
+                showIntermediateStops={settings.showIntermediateStops}
                 onOpenMap={hideMap ? undefined : handleToggleMap}
                 mapOpen={!hideMap && mapOpen}
               />

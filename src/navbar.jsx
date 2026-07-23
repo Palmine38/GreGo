@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useTheme } from "./hooks/useTheme.js";
+import { InfotraficSheet } from "./components/InfotraficSheet.jsx";
 
 const TABS = ["/mes-trajets", "/fastresearch", "/settings"];
 
@@ -61,6 +62,24 @@ function SettingsIcon({ className }) {
   );
 }
 
+function InfotraficIcon({ className }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 122.88 122.54"
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        fill="currentColor"
+        d="M7.68,107.18h16.25l6.72-23.29H92.3l6.65,23.29h16.25c4.22,0,7.68,3.46,7.68,7.68v0c0,4.22-3.46,7.68-7.68,7.68H7.68c-4.22,0-7.68-3.46-7.68-7.68v0C0,110.64,3.46,107.18,7.68,107.18L7.68,107.18z M35.05,68.64l6.74-23.36h39.49l6.67,23.36H35.05L35.05,68.64z M46.04,30.55l7.45-25.81c2.5-6.31,13.92-6.33,16.23,0.05l7.35,25.76H46.04L46.04,30.55z"
+      />
+    </svg>
+  );
+}
+
 export default function Navbar({
   menuOpen,
   setMenuOpen,
@@ -72,6 +91,7 @@ export default function Navbar({
   const location = useLocation();
   const navigate = useNavigate();
   const [localMenuOpen, setLocalMenuOpen] = useState(false);
+  const [infotraficOpen, setInfotraficOpen] = useState(false);
   const preserveCompactOnArrival =
     location.state?.preserveBottomBarCompact === true;
   const [isCompact, setIsCompact] = useState(
@@ -100,8 +120,6 @@ export default function Navbar({
 
   useEffect(() => {
     const onScroll = () => {
-      // Après une navigation depuis une barre réduite, l'écran arrive en haut
-      // mais la barre doit conserver son format compact jusqu'au prochain scroll.
       if (!hasScrolledSinceArrival.current && window.scrollY === 0) return;
       hasScrolledSinceArrival.current = true;
       setIsCompact(window.scrollY > 48);
@@ -111,7 +129,6 @@ export default function Navbar({
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Ferme le menu si on clique en dehors (repris de l'ancienne navbar)
   useEffect(() => {
     if (!isMenuOpen) return;
     const handler = (event) => {
@@ -224,34 +241,36 @@ export default function Navbar({
         className="sticky top-0 z-40 border-b-2 border-gray-200 bg-white px-4 py-2"
       >
         <div className="relative mx-auto flex min-h-16 max-w-md items-center justify-center">
-          <button
-            type="button"
-            onClick={() => setMenu(!isMenuOpen)}
-            className="absolute left-0 flex flex-col items-center justify-center gap-1 w-8 h-8 p-1 rounded-md transition-colors duration-150"
-            aria-label="Menu"
-            aria-expanded={isMenuOpen}
-          >
-            <span
-              className="block w-full h-0.5 bg-black origin-center transition-transform duration-300"
-              style={{
-                transform: isMenuOpen
-                  ? "translateY(6px) rotate(45deg)"
-                  : "none",
-              }}
-            />
-            <span
-              className="block w-full h-0.5 bg-black transition-opacity duration-300"
-              style={{ opacity: isMenuOpen ? 0 : 1 }}
-            />
-            <span
-              className="block w-full h-0.5 bg-black origin-center transition-transform duration-300"
-              style={{
-                transform: isMenuOpen
-                  ? "translateY(-6px) rotate(-45deg)"
-                  : "none",
-              }}
-            />
-          </button>
+          <div className="absolute left-0 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setMenu(!isMenuOpen)}
+              className="flex flex-col items-center justify-center gap-1 w-8 h-8 p-1 rounded-md transition-colors duration-150"
+              aria-label="Menu"
+              aria-expanded={isMenuOpen}
+            >
+              <span
+                className="block w-full h-0.5 bg-black origin-center transition-transform duration-300"
+                style={{
+                  transform: isMenuOpen
+                    ? "translateY(6px) rotate(45deg)"
+                    : "none",
+                }}
+              />
+              <span
+                className="block w-full h-0.5 bg-black transition-opacity duration-300"
+                style={{ opacity: isMenuOpen ? 0 : 1 }}
+              />
+              <span
+                className="block w-full h-0.5 bg-black origin-center transition-transform duration-300"
+                style={{
+                  transform: isMenuOpen
+                    ? "translateY(-6px) rotate(-45deg)"
+                    : "none",
+                }}
+              />
+            </button>
+          </div>
           <img
             src={
               isDark
@@ -261,6 +280,16 @@ export default function Navbar({
             alt="GreGo"
             className="h-8"
           />
+          <div className="absolute right-0 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setInfotraficOpen(true)}
+              className="flex items-center justify-center w-6 h-6 text-black"
+              aria-label="Infotrafic"
+            >
+              <InfotraficIcon className="w-5 h-5" />
+            </button>
+          </div>
         </div>
         <div
           aria-hidden={!isMenuOpen}
@@ -273,6 +302,26 @@ export default function Navbar({
           }}
         >
           <ul className="flex flex-col">
+            <li>
+              <Link
+                to="/infotrafic"
+                onClick={() => setMenu(false)}
+                className="block px-4 py-2 hover:bg-gray-100"
+              >
+                Infotrafic
+              </Link>
+            </li>
+            <li>
+              <a
+                href="https://grelines-feedback-website.vercel.app/grego"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setMenu(false)}
+                className="block px-4 py-2 hover:bg-gray-100"
+              >
+                Suggestions
+              </a>
+            </li>
             <li>
               <a
                 href="https://github.com/Palmine38"
@@ -377,6 +426,11 @@ export default function Navbar({
           </Link>
         </div>
       </nav>
+
+      <InfotraficSheet
+        isOpen={infotraficOpen}
+        onClose={() => setInfotraficOpen(false)}
+      />
     </>
   );
 }

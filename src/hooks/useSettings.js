@@ -6,6 +6,8 @@ const DEFAULT_SETTINGS = {
     wheelchair: false,
     walkSpeed: 1.4,
     numItineraries: 5,
+    showJourneyDisruptions: true,
+    showIntermediateStops: true,
 };
 
 /**
@@ -24,6 +26,8 @@ export function useSettings() {
                     wheelchair: parsed.wheelchair ?? false,
                     walkSpeed: parsed.walkSpeed ?? 1.4,
                     numItineraries: parsed.numItineraries ?? 5,
+                    showJourneyDisruptions: parsed.showJourneyDisruptions ?? true,
+                    showIntermediateStops: parsed.showIntermediateStops ?? true,
                 });
             }
         } catch (e) {

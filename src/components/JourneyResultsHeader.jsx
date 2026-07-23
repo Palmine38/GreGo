@@ -49,6 +49,7 @@ const ArrowIcon = () => (
  *   showRefreshCheck — bool (affiche un check à la place de l'icône refresh)
  *   isLineDisrupted — fn(lineKey) → bool
  *   onLineClick    — fn(lineKey) — ouvre le panneau infotrafic
+ *   onHeaderClick  — callback — ouvre la feuille de recherche
  *   onRefresh      — callback refresh
  */
 export function JourneyResultsHeader({
@@ -61,6 +62,7 @@ export function JourneyResultsHeader({
   showRefreshCheck,
   isLineDisrupted,
   onLineClick,
+  onHeaderClick,
   onRefresh,
 }) {
   const theme = useTheme();
@@ -87,7 +89,26 @@ export function JourneyResultsHeader({
   return (
     <>
       {/* Résumé itinéraire + icônes lignes */}
-      <div className="mb-3 p-4 bg-white border border-gray-200 rounded-2xl shadow-md">
+      <div
+        className={`mb-3 p-4 bg-white border border-gray-200 rounded-2xl shadow-md ${
+          onHeaderClick
+            ? "cursor-pointer transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            : ""
+        }`}
+        role={onHeaderClick ? "button" : undefined}
+        tabIndex={onHeaderClick ? 0 : undefined}
+        onClick={onHeaderClick}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (
+            onHeaderClick &&
+            (event.key === "Enter" || event.key === " ")
+          ) {
+            event.preventDefault();
+            onHeaderClick();
+          }
+        }}
+      >
         <div className="font-bold text-gray-900 mt-1">
           <span>
             <span>{dep.includes("::") ? dep.split("::")[0] : dep}</span>
@@ -103,7 +124,10 @@ export function JourneyResultsHeader({
                   <button
                     key={lk}
                     className="relative"
-                    onClick={() => onLineClick(lk)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onLineClick(lk);
+                    }}
                   >
                     <LineIcon lineKey={lk} size="w-6 h-6" />
                     <span

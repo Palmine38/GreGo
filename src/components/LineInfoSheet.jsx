@@ -11,14 +11,21 @@ export function LineInfoSheet({
   initialSnap = 1,
 }) {
   const [height, setHeight] = useState(60);
+  // On garde la dernière ligne affichée pour que le contenu (et le Sheet
+  // lui-même) restent montés pendant l'animation de fermeture, même si le
+  // parent a déjà remis `lineKey` à null.
+  const [displayedLine, setDisplayedLine] = useState(lineKey);
 
   useEffect(() => {
-    if (lineKey) setHeight(60);
+    if (lineKey) {
+      setDisplayedLine(lineKey);
+      setHeight(60);
+    }
   }, [lineKey]);
 
-  if (!lineKey) return null;
+  if (!displayedLine) return null;
 
-  const disruptions = getLineDisruptions(lineKey);
+  const disruptions = getLineDisruptions(displayedLine);
 
   return (
     <Sheet
@@ -36,13 +43,13 @@ export function LineInfoSheet({
         <Sheet.Content>
           <div className="overflow-y-auto flex-1 px-4 pb-8">
             <div className="flex items-center gap-3 mb-4">
-              <LineIcon lineKey={lineKey} size="w-10 h-10" />
+              <LineIcon lineKey={displayedLine} size="w-10 h-10" />
               <div>
                 <p className="text-xs uppercase tracking-widest text-slate-400">
                   Infotrafic
                 </p>
                 <h2 className="text-lg font-bold text-slate-900">
-                  Ligne {lineKey}
+                  Ligne {displayedLine}
                 </h2>
               </div>
             </div>

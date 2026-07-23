@@ -1,7 +1,9 @@
 import React from "react";
 import LineIcon, { LINE_COLORS } from "./lines-icons.jsx";
+import { DisruptionItem } from "./DisruptionItem.jsx";
 import { formatDuration } from "../utils/journey.js";
 import { isCurrentLocationValue } from "../utils/currentLocation.js";
+import { useTheme } from "../hooks/useTheme.js";
 
 /**
  * Affiche la timeline pas-à-pas d'un itinéraire (transit + marche).
@@ -14,8 +16,14 @@ import { isCurrentLocationValue } from "../utils/currentLocation.js";
 export function JourneyTimeline({
   journey,
   lineColors,
+  getLineDisruptions,
+  showDisruptions = true,
+  showIntermediateStops = true,
   onOpenMap,
 }) {
+  const theme = useTheme();
+  const intermediateStopBackground = theme === "light" ? "#E2E8F0" : "#FFFFFF";
+
   if (!journey) return null;
 
   // La position actuelle, comme une adresse saisie, doit afficher la marche
@@ -24,13 +32,22 @@ export function JourneyTimeline({
     isCurrentLocationValue(journey.rawDep) ||
     (journey.rawDep || "").includes("::");
   const arrIsAddress = (journey.rawArr || "").includes("::");
+  const MAX_HIDDEN_WALK_TO_STOP_METERS = 30;
 
   const allLegs = (journey.allLegs || []).filter((leg, i, arr) => {
     if (leg.mode !== "WALK") return true;
     const isFirst = arr.slice(0, i).every((l) => l.mode === "WALK");
     if (isFirst && !depIsAddress) return false;
     const isLast = arr.slice(i + 1).every((l) => l.mode === "WALK");
-    if (isLast && !arrIsAddress) return false;
+    // Pour une destination arrêt, on masque uniquement la toute petite marche
+    // générée entre le quai et le point exact de l'arrêt.
+    if (
+      isLast &&
+      !arrIsAddress &&
+      (leg.distance ?? 0) <= MAX_HIDDEN_WALK_TO_STOP_METERS
+    ) {
+      return false;
+    }
     return true;
   });
 
@@ -45,6 +62,23 @@ export function JourneyTimeline({
     const durationMin = Math.round(leg.duration / 60);
 
     if (!isWalk) {
+      const disruptions = showDisruptions
+        ? getLineDisruptions?.(lineName) || []
+        : [];
+
+      if (disruptions.length > 0) {
+        items.push(
+          <div key={`disruptions-${i}`} className="mb-2 w-full space-y-2">
+            {disruptions.map((evt, disruptionIndex) => (
+              <DisruptionItem
+                key={`${lineName}-${disruptionIndex}`}
+                evt={evt}
+              />
+            ))}
+          </div>,
+        );
+      }
+
       items.push(
         <div key={`transit-start-${i}`} className="flex gap-3 items-start mb-0">
           <div className="flex flex-col items-center w-8 flex-shrink-0">
@@ -89,6 +123,42 @@ export function JourneyTimeline({
         </div>,
       );
 
+      if (showIntermediateStops) {
+        const intermediateStops = (leg.intermediateStops || []).filter(
+          (stop) => stop?.name,
+        );
+        intermediateStops.forEach((stop, stopIndex) => {
+          items.push(
+            <div
+              key={`intermediate-stop-${i}-${stopIndex}`}
+              className="flex gap-3 items-start mb-0"
+            >
+              <div className="flex flex-col items-center w-8 flex-shrink-0">
+                <div className="w-1 h-3" style={{ backgroundColor: color }} />
+                <div
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{
+                    backgroundColor: intermediateStopBackground,
+                    border: `2px solid ${color}`,
+                  }}
+                />
+                <div
+                  className={`w-1 flex-1 ${
+                    stopIndex === intermediateStops.length - 1
+                      ? "min-h-6"
+                      : "min-h-3"
+                  }`}
+                  style={{ backgroundColor: color }}
+                />
+              </div>
+              <p className="flex-1 pt-2 text-[12.5px] text-slate-600">
+                {stop.name.replace(/^[^,]+,\s*/, "")}
+              </p>
+            </div>,
+          );
+        });
+      }
+
       const nextLeg = allLegs[i + 1];
       const nextIsTransit = nextLeg && nextLeg.mode !== "WALK";
 
@@ -131,7 +201,10 @@ export function JourneyTimeline({
       }
     }
 
-    if (isWalk && durationMin >= 1) {
+    if (
+      isWalk &&
+      (durationMin >= 1 || leg.distance > MAX_HIDDEN_WALK_TO_STOP_METERS)
+    ) {
       items.push(
         <div key={`walk-${i}`} className="flex gap-3 items-center">
           <div className="flex flex-col items-center w-8 flex-shrink-0">
@@ -159,7 +232,7 @@ export function JourneyTimeline({
             )}
           </div>
           <p className="text-[13px] text-slate-600 mb-5">
-            À pied · {formatDuration(durationMin)}
+            À pied · {formatDuration(Math.max(1, durationMin))}
           </p>
         </div>,
       );

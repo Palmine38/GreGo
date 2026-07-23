@@ -366,10 +366,6 @@ export function SearchForm({
                 value={searchTime || ""}
                 onChange={(e) => {
                   setSearchTime(e.target.value);
-                  if (e.target.value) {
-                    setDepartureTime?.("");
-                    setArrivalTime?.("");
-                  }
                 }}
                 className="min-w-0 flex-1 border p-2 rounded-lg"
                 aria-label="Heure de recherche"

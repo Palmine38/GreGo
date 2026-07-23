@@ -10,6 +10,8 @@ const DEFAULTS = {
   walkSpeed: 1.4,
   numItineraries: 10,
   headerLines: "all",
+  showJourneyDisruptions: true,
+  showIntermediateStops: true,
   theme: "light",
 };
 
@@ -38,6 +40,10 @@ export default function Settings() {
           walkSpeed: parsed.walkSpeed ?? DEFAULTS.walkSpeed,
           numItineraries: parsed.numItineraries ?? DEFAULTS.numItineraries,
           headerLines: parsed.headerLines ?? DEFAULTS.headerLines,
+          showJourneyDisruptions:
+            parsed.showJourneyDisruptions ?? DEFAULTS.showJourneyDisruptions,
+          showIntermediateStops:
+            parsed.showIntermediateStops ?? DEFAULTS.showIntermediateStops,
           theme: normalizeTheme(parsed.theme),
         };
       }
@@ -52,6 +58,12 @@ export default function Settings() {
   const [walkSpeed, setWalkSpeed] = useState(initial.walkSpeed);
   const [numItineraries, setNumItineraries] = useState(initial.numItineraries);
   const [headerLines, setHeaderLines] = useState(initial.headerLines);
+  const [showJourneyDisruptions, setShowJourneyDisruptions] = useState(
+    initial.showJourneyDisruptions,
+  );
+  const [showIntermediateStops, setShowIntermediateStops] = useState(
+    initial.showIntermediateStops,
+  );
   const [theme, setTheme] = useState(initial.theme);
   const [resetStep, setResetStep] = useState(null); // null | 'warn' | 'confirm'
   const [resetClosing, setResetClosing] = useState(false);
@@ -135,6 +147,8 @@ export default function Settings() {
         walkSpeed,
         numItineraries,
         headerLines,
+        showJourneyDisruptions,
+        showIntermediateStops,
         theme,
       }),
     );
@@ -146,9 +160,11 @@ export default function Settings() {
         walkSpeed,
         numItineraries,
         headerLines,
+        showJourneyDisruptions,
+        showIntermediateStops,
         theme,
       });
-  }, [wheelchair, walkSpeed, numItineraries, headerLines, theme]);
+  }, [wheelchair, walkSpeed, numItineraries, headerLines, showJourneyDisruptions, showIntermediateStops, theme]);
 
   const speedInKmh = (walkSpeed * 3.6).toFixed(1);
   const handleSpeedChange = (kmh) => setWalkSpeed(kmh / 3.6);
@@ -317,6 +333,40 @@ export default function Settings() {
                   </label>
                 ))}
               </div>
+            </div>
+
+            <div className="border-t border-gray-200 pt-4 pb-4">
+              <label className="flex items-center justify-between cursor-pointer gap-4">
+                <span className="text-sm font-semibold">
+                  Afficher l'infotrafic dans les détails du trajet
+                </span>
+                <input
+                  type="checkbox"
+                  checked={showJourneyDisruptions}
+                  onChange={(e) => setShowJourneyDisruptions(e.target.checked)}
+                  className="w-4 h-4 cursor-pointer flex-shrink-0"
+                />
+              </label>
+              <p className="text-xs text-gray-500 mt-1">
+                Affiche les perturbations au-dessus des lignes concernées.
+              </p>
+            </div>
+
+            <div className="border-t border-gray-200 pt-4 pb-4">
+              <label className="flex items-center justify-between cursor-pointer gap-4">
+                <span className="text-sm font-semibold">
+                  Afficher les arrêts intermédiaires
+                </span>
+                <input
+                  type="checkbox"
+                  checked={showIntermediateStops}
+                  onChange={(e) => setShowIntermediateStops(e.target.checked)}
+                  className="w-4 h-4 cursor-pointer flex-shrink-0"
+                />
+              </label>
+              <p className="text-xs text-gray-500 mt-1">
+                Affiche les arrêts desservis entre le départ et l'arrivée.
+              </p>
             </div>
 
             <div className="border-t border-gray-200 pt-4">

@@ -11,6 +11,7 @@ import MesTrajets from "./mes-trajets.jsx";
 import Settings from "./settings.jsx";
 import NoMobile from "./nomobile.jsx";
 import SuiviBeta from "./suivi-beta.jsx";
+import InfoTrafic from "./infotrafic.jsx";
 import { applyTheme, normalizeTheme } from "./hooks/useTheme.js";
 import "./App.css";
 
@@ -75,6 +76,14 @@ function App() {
           element={
             <DeviceGuard>
               <SuiviBeta />
+            </DeviceGuard>
+          }
+        />
+        <Route
+          path="/infotrafic"
+          element={
+            <DeviceGuard>
+              <InfoTrafic />
             </DeviceGuard>
           }
         />
