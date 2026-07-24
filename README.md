@@ -185,15 +185,15 @@ L'application utilise l'API ouverte TAG Mobilités :
 
 ## Licence
 
-Ce projet est open source et disponible sous la licence MIT.
+Ce projet est open source et disponible sous la licence GNU GPL v3.
 
 ## Crédits
 
-Ce projet ne serait pas possible sans les APIs opendata fournies par MRESO.
+Ce projet ne serait pas possible sans les APIs opendata fournies par MRéso.
 
 ## Auteur
 
-Créé par [Palmine38](https://github.com/Palmine38) avec la collaboration de [Antquu](https://github.com/antquu)
+Créé par [Palmine38](https://github.com/Palmine38) avec la contribution du créateur de Grelines, [Antquu](https://github.com/antquu)
 
 ## Contribution
 
