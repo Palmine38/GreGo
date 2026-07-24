@@ -1,21 +1,34 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import vitePrerender from "vite-plugin-prerender";
 import path from "path";
+import { fileURLToPath } from "url";
+import { createRequire } from "module";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const vitePrerender = require("vite-plugin-prerender");
 
 export default defineConfig({
   plugins: [
     react(),
     vitePrerender({
       staticDir: path.join(__dirname, "dist"),
-      routes: ["/"],
+      routes: [
+        "/",
+        "/mobile",
+        "/fastresearch",
+        "/mes-trajets",
+        "/settings",
+        "/suivi-beta",
+        "/infotrafic",
+      ],
     }),
   ],
   server: {
     host: "0.0.0.0",
     proxy: {
       "/tag": {
-        target: "https://data.mobilites-m.fr",
+        target: "https://mobilites-m.fr",
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/tag/, ""),
       },

@@ -71,6 +71,7 @@ function App() {
             </DeviceGuard>
           }
         />
+        {/* PAS ENCORE DISPONIBLE SUR LE SITE PUBLIC
         <Route
           path="/suivi-beta/"
           element={
@@ -78,7 +79,7 @@ function App() {
               <SuiviBeta />
             </DeviceGuard>
           }
-        />
+        /> */}
         <Route
           path="/infotrafic"
           element={
