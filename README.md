@@ -1,14 +1,11 @@
-[![Bannière Grego](https://image.noelshack.com/fichiers/2026/16/2/1776181360-grego.png)](https://gre-go.vercel.app/)
+[![Bannière Grego](https://image.noelshack.com/fichiers/2026/30/5/1784922257-dark-no-bg-banner.png)](https://gre-go.vercel.app/)
 
 [![GreGo](https://img.shields.io/badge/GreGo-Release_2.0-brightgreen)](https://web-tag-express.vercel.app/)
 [![React](https://img.shields.io/badge/React-18.2.4-blue.svg)](https://reactjs.org/)
 [![Vite](https://img.shields.io/badge/Vite-8.0.1-646CFF.svg)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.2.2-38B2AC.svg)](https://tailwindcss.com/)
 
-> Une application web moderne faite pour Mobile seulement à l'heure actuelle pour gérer et rechercher des trajets de transport utilisant le système de transit TAG (Transports de l'Agglomération Grenobloise).
-> Cette app est toujours en développement, certains bugs peuvent donc apparaître. Merci de les report dans `issues` lorsque cela arrive.
-
-> ⚠️ : les itinéraires peuvent être imprécis en fonction de la ligne. (ex: une ligne de tram aura des itinéraires plus précis qu'une ligne de bus). Cela est dû au traffic et aux imprévus de la route, qui peuvent donc décaler les horaires théoriques.
+> Une application web moderne faite pour Mobile pour gérer et rechercher des trajets de transport utilisant l'API mise a disposition par la TAG (Transports de l'Agglomération Grenobloise).
 
 ## Captures d'écran de /mes-trajets/
 
