@@ -28,7 +28,7 @@
 - **Refresh** : A l'aide d'un seul clic, vous pouvez rafraichir manuellement vos trajets.
 - **Icones** : icones générées par le fichier lines-icons.jsx afin de ne pas utiliser des images sous copyright de la MTAG.
 
-## Stack Technologique (pour devs)
+## Stack Technologique
 
 - **Frontend** : React 18
 - **Outil de Build** : Vite
