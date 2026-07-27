@@ -61,6 +61,15 @@ export function JourneyTimeline({
     const color = LINE_COLORS[lineName] || lineColors[lineName] || "#6B7280";
     const durationMin = Math.round(leg.duration / 60);
 
+    const prevLeg = allLegs[i - 1];
+    const nextLeg = allLegs[i + 1];
+    const isBetweenTransits =
+      isWalk &&
+      prevLeg &&
+      prevLeg.mode !== "WALK" &&
+      nextLeg &&
+      nextLeg.mode !== "WALK";
+
     if (!isWalk) {
       const disruptions = showDisruptions
         ? getLineDisruptions?.(lineName) || []
@@ -201,10 +210,13 @@ export function JourneyTimeline({
       }
     }
 
-    if (
-      isWalk &&
-      (durationMin >= 1 || leg.distance > MAX_HIDDEN_WALK_TO_STOP_METERS)
-    ) {
+  if (
+    isWalk &&
+    (durationMin >= 1 ||
+      leg.distance > MAX_HIDDEN_WALK_TO_STOP_METERS ||
+      isBetweenTransits)
+  ) {
+
       items.push(
         <div key={`walk-${i}`} className="flex gap-3 items-center">
           <div className="flex flex-col items-center w-8 flex-shrink-0">
