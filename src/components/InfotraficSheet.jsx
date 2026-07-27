@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Sheet } from "react-modal-sheet";
-import LineIcon from "./lines-icons.jsx";
-import { DisruptionItem } from "./DisruptionItem.jsx";
-import { useDisruptions } from "../hooks/useDisruptions.js";
+import Navbar from "./navbar.jsx";
+import LineIcon from "./components/lines-icons.jsx";
+import { DisruptionItem } from "./components/DisruptionItem.jsx";
+import { useDisruptions } from "./hooks/useDisruptions.js";
 
 const TRAM_ORDER = ["A", "B", "C", "D", "E"];
 
@@ -56,7 +56,7 @@ function sortLines(a, b) {
   return a.name.localeCompare(b.name, "fr", { numeric: true });
 }
 
-export function InfotraficSheet({ isOpen, onClose, initialSnap = 1 }) {
+export default function InfoTrafic() {
   const { disruptionsRaw } = useDisruptions();
   const [routes, setRoutes] = useState([]);
   const [selectedLine, setSelectedLine] = useState(null);
@@ -69,11 +69,6 @@ export function InfotraficSheet({ isOpen, onClose, initialSnap = 1 }) {
       .then(setRoutes)
       .catch(() => setRoutes([]));
   }, []);
-
-  // Reset l'état de sélection à chaque réouverture de la sheet.
-  useEffect(() => {
-    if (isOpen) setSelectedLine(null);
-  }, [isOpen]);
 
   const disruptedLines = useMemo(() => {
     const grouped = new Map();
@@ -107,6 +102,12 @@ export function InfotraficSheet({ isOpen, onClose, initialSnap = 1 }) {
 
   const selectLine = (name) => {
     setSelectedLine(name);
+  };
+
+  // Scroll vers le détail dès que la ligne sélectionnée change (et donc dès
+  // le premier clic, une fois la section montée dans le DOM).
+  useEffect(() => {
+    if (!selectedLine) return;
     window.requestAnimationFrame(() =>
       window.requestAnimationFrame(() =>
         detailRef.current?.scrollIntoView({
@@ -115,130 +116,111 @@ export function InfotraficSheet({ isOpen, onClose, initialSnap = 1 }) {
         }),
       ),
     );
-  };
+  }, [selectedLine]);
 
   return (
-    <Sheet
-      isOpen={isOpen}
-      onClose={onClose}
-      snapPoints={[0, 0.6, 1]}
-      initialSnap={initialSnap}
-      dragVelocityThreshold={200}
-      dragCloseThreshold={0.3}
-    >
-      <Sheet.Container
-        style={{ borderRadius: "24px 24px 0 0", overflow: "hidden" }}
-      >
-        <Sheet.Header />
-        <Sheet.Content>
-          <div className="overflow-y-auto flex-1 px-4 pb-8">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="mt-1 text-lg font-bold text-slate-900">
-                Infotrafic
-              </h2>
-              {disruptedLines.length > 0 && (
-                <select
-                  value={network}
-                  onChange={(event) => setNetwork(event.target.value)}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700"
-                  aria-label="Trier par réseau"
-                >
-                  {NETWORKS.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
+    <div className="min-h-screen bg-slate-50 pb-28">
+      <Navbar />
+      <main className="mx-auto max-w-md px-4 py-5">
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="mt-1 text-2xl font-bold text-slate-900">Infotrafic</h1>
+          {disruptedLines.length > 0 && (
+            <select
+              value={network}
+              onChange={(event) => setNetwork(event.target.value)}
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700"
+              aria-label="Trier par réseau"
+            >
+              {NETWORKS.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
 
-            <p className="mt-2 text-sm text-slate-600">
-              {disruptedLines.length
-                ? `${disruptedLines.length} ligne${disruptedLines.length > 1 ? "s" : ""} perturbée${disruptedLines.length > 1 ? "s" : ""} actuellement.`
-                : "Aucune perturbation en cours."}
-            </p>
+        <p className="mt-2 text-sm text-slate-600">
+          {disruptedLines.length
+            ? `${disruptedLines.length} ligne${disruptedLines.length > 1 ? "s" : ""} perturbée${disruptedLines.length > 1 ? "s" : ""} actuellement.`
+            : "Aucune perturbation en cours."}
+        </p>
 
-            {disruptedLines.length > 0 && (
-              <section
-                className="mt-4 grid grid-cols-5 gap-4"
-                aria-label="Lignes perturbées"
+        {disruptedLines.length > 0 && (
+          <section
+            className="mt-4 grid grid-cols-5 gap-4"
+            aria-label="Lignes perturbées"
+          >
+            {visibleLines.map((line) => (
+              <button
+                key={line.name}
+                type="button"
+                onClick={() => selectLine(line.name)}
+                className="flex items-center justify-center rounded-lg transition active:scale-95"
+                aria-label={`Voir les perturbations de la ligne ${line.name}`}
+                title={`Ligne ${line.name}`}
               >
-                {visibleLines.map((line) => (
-                  <button
-                    key={line.name}
-                    type="button"
-                    onClick={() => selectLine(line.name)}
-                    className="flex items-center justify-center rounded-lg transition active:scale-95"
-                    aria-label={`Voir les perturbations de la ligne ${line.name}`}
-                    title={`Ligne ${line.name}`}
-                  >
-                    <LineIcon lineKey={line.name} size="w-10 h-10" />
-                  </button>
-                ))}
-                {visibleLines.length === 0 && (
-                  <p className="col-span-5 rounded-2xl bg-white p-6 text-center text-sm text-slate-500 shadow-sm">
-                    Aucune ligne dans ce réseau.
-                  </p>
-                )}
-              </section>
-            )}
-
-            {disruptedLines.length === 0 && (
-              <p className="mt-6 rounded-2xl bg-white p-6 text-center text-sm text-slate-500 shadow-sm">
-                Le réseau ne signale aucune perturbation actuellement.
+                <LineIcon lineKey={line.name} size="w-10 h-10" />
+              </button>
+            ))}
+            {visibleLines.length === 0 && (
+              <p className="col-span-5 rounded-2xl bg-white p-6 text-center text-sm text-slate-500 shadow-sm">
+                Aucune ligne dans ce réseau.
               </p>
             )}
+          </section>
+        )}
 
-            {selectedLineData && (
-              <section
-                ref={detailRef}
-                className="mt-6 scroll-mt-6"
-                aria-live="polite"
+        {disruptedLines.length === 0 && (
+          <p className="mt-6 rounded-2xl bg-white p-6 text-center text-sm text-slate-500 shadow-sm">
+            Le réseau ne signale aucune perturbation actuellement.
+          </p>
+        )}
+
+        {selectedLineData && (
+          <section
+            ref={detailRef}
+            className="mt-6 scroll-mt-6"
+            aria-live="polite"
+          >
+            <div className="mb-3 mt-12 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <LineIcon lineKey={selectedLineData.name} size="w-10 h-10" />
+                <div>
+                  <h2 className="font-bold text-slate-900">
+                    Ligne {selectedLineData.name}
+                  </h2>
+                  <p className="text-xs font-medium text-amber-700">
+                    {selectedLineData.events.length} perturbation
+                    {selectedLineData.events.length > 1 ? "s" : ""}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedLine(null)}
+                className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                aria-label="Fermer le détail"
               >
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <LineIcon
-                      lineKey={selectedLineData.name}
-                      size="w-10 h-10"
-                    />
-                    <div>
-                      <h3 className="font-bold text-slate-900">
-                        Ligne {selectedLineData.name}
-                      </h3>
-                      <p className="text-xs font-medium text-amber-700">
-                        {selectedLineData.events.length} perturbation
-                        {selectedLineData.events.length > 1 ? "s" : ""}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedLine(null)}
-                    className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-                    aria-label="Fermer le détail"
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      className="size-5"
-                    >
-                      <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
-                    </svg>
-                  </button>
-                </div>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                  className="size-5"
+                >
+                  <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+                </svg>
+              </button>
+            </div>
 
-                <div className="space-y-2">
-                  {selectedLineData.events.map((evt, i) => (
-                    <DisruptionItem key={evt.id || i} evt={evt} defaultOpen />
-                  ))}
-                </div>
-              </section>
-            )}
-          </div>
-        </Sheet.Content>
-      </Sheet.Container>
-      <Sheet.Backdrop onTap={onClose} />
-    </Sheet>
+            <div className="space-y-2">
+              {selectedLineData.events.map((evt, i) => (
+                <DisruptionItem key={evt.id || i} evt={evt} defaultOpen />
+              ))}
+            </div>
+          </section>
+        )}
+      </main>
+    </div>
   );
 }
