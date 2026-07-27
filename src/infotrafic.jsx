@@ -105,17 +105,39 @@ export default function InfoTrafic() {
   };
 
   // Scroll vers le détail dès que la ligne sélectionnée change (et donc dès
-  // le premier clic, une fois la section montée dans le DOM).
+  // le premier clic, une fois la section montée dans le DOM). On recorrige
+  // la position tant que le layout bouge encore (icônes qui chargent,
+  // accordéon des perturbations qui s'ouvre, etc.), sinon le scroll peut
+  // s'arrêter trop tôt ou trop tard selon ce qui a fini de se dessiner.
   useEffect(() => {
     if (!selectedLine) return;
-    window.requestAnimationFrame(() =>
-      window.requestAnimationFrame(() =>
-        detailRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        }),
-      ),
+    const target = detailRef.current;
+    if (!target) return;
+
+    const scrollToTarget = () =>
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    let correctionTimeout;
+    const observer = new ResizeObserver(() => {
+      clearTimeout(correctionTimeout);
+      correctionTimeout = setTimeout(scrollToTarget, 50);
+    });
+    observer.observe(document.body);
+
+    const initialFrame = requestAnimationFrame(() =>
+      requestAnimationFrame(scrollToTarget),
     );
+
+    // On arrête d'observer après un court laps de temps : le temps que les
+    // images et animations se stabilisent, sans continuer indéfiniment.
+    const stopObserving = setTimeout(() => observer.disconnect(), 800);
+
+    return () => {
+      cancelAnimationFrame(initialFrame);
+      clearTimeout(correctionTimeout);
+      clearTimeout(stopObserving);
+      observer.disconnect();
+    };
   }, [selectedLine]);
 
   return (
