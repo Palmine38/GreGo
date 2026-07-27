@@ -102,6 +102,12 @@ export default function InfoTrafic() {
 
   const selectLine = (name) => {
     setSelectedLine(name);
+  };
+
+  // Scroll vers le détail dès que la ligne sélectionnée change (et donc dès
+  // le premier clic, une fois la section montée dans le DOM).
+  useEffect(() => {
+    if (!selectedLine) return;
     window.requestAnimationFrame(() =>
       window.requestAnimationFrame(() =>
         detailRef.current?.scrollIntoView({
@@ -110,7 +116,7 @@ export default function InfoTrafic() {
         }),
       ),
     );
-  };
+  }, [selectedLine]);
 
   return (
     <div className="min-h-screen bg-slate-50 pb-28">
