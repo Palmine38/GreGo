@@ -195,7 +195,7 @@ export function JourneyTimeline({
           <div
             key={`transfer-gap-${i}`}
             className="flex gap-3 items-center"
-            style={{ minHeight: "8px" }}
+            style={{ minHeight: "32px" }}
           />,
         );
       }
