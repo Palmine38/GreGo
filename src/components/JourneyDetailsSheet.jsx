@@ -921,7 +921,7 @@ export function JourneyDetailsSheet({
                   <button
                     onClick={handleToggleMap}
                     className="flex flex-shrink-0 items-center gap-1.5 text-xs font-semibold mb-7 transition-colors"
-                    style={{ color: mapOpen ? "#2563EB" : "#2563EB" }}
+                    style={{ color: mapOpen ? "#3B82F6" : "#3B82F6" }}
                   >
                     <svg
                       xmlns="http://www.w3.org/2000/svg"
