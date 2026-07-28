@@ -62,7 +62,7 @@ const RelaisBadge = ({ badgeSize }) => (
     style={{
       position: "absolute",
       left: "50%",
-      bottom: -badgeSize * 0.3,
+      bottom: -badgeSize * 0.15,
       transform: "translateX(-50%)",
       display: "block",
     }}
