@@ -328,10 +328,11 @@ export default function Navbar({
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setMenu(false)}
-                className="block px-4 py-2 hover:bg-gray-100"
+                className="block px-4 py-2 hover:bg-gray-100 font-semibold"
               >
                 Me soutenir
               </a>
+            </li>
             <li>
               <a
                 href="https://github.com/Palmine38"
