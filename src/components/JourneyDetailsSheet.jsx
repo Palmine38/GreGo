@@ -7,6 +7,8 @@ import MapLibreMap, { Marker, Source, Layer } from "react-map-gl/maplibre";
 import LineIcon, { LINE_COLORS, preloadLineData } from "./lines-icons.jsx";
 import { Sheet } from "react-modal-sheet";
 import lineB from "./lineB.json";
+import lineNAVBVerdunToPDS from "./lineNAVB_verdun_to_pds.json";
+import lineNAVBPdsToVerdun from "./lineNAVB_pds_to_verdun.json";
 import { useTheme } from "../hooks/useTheme.js";
 
 const MAPTILER_STYLE_URL_LIGHT =
@@ -115,6 +117,41 @@ function getLegLineName(leg) {
 // Pour la ligne B, on utilise le tracé de référence embarqué dans l'application.
 const LINE_B_COORDINATES = lineB.features?.[0]?.geometry?.coordinates || [];
 
+// Ligne NAVB : deux tracés distincts selon la direction. Les deux tracés
+// suivent globalement la même route physique, juste parcourue dans l'ordre
+// inverse — impossible de choisir entre eux en mesurant "lequel colle le
+// mieux au leg" (les deux seraient quasiment aussi proches). On détermine
+// donc la direction directement à partir de la position du leg, en la
+// comparant à deux repères fixes (les deux termini de la ligne).
+const LINE_NAVB_VERDUN_TO_PDS_COORDINATES =
+  lineNAVBVerdunToPDS.features?.[0]?.geometry?.coordinates || [];
+const LINE_NAVB_PDS_TO_VERDUN_COORDINATES =
+  lineNAVBPdsToVerdun.features?.[0]?.geometry?.coordinates || [];
+const NAVB_TERMINI = {
+  verdun: { lat: 45.18829, lon: 5.73164 }, // Grenoble, Verdun - Préfecture
+  pds: { lat: 45.1878, lon: 5.78454 }, // Gières, Plaine des Sports
+};
+
+function isCloserToPdsThanVerdun(point) {
+  const distToVerdun = Math.hypot(
+    point.lat - NAVB_TERMINI.verdun.lat,
+    point.lon - NAVB_TERMINI.verdun.lon,
+  );
+  const distToPds = Math.hypot(
+    point.lat - NAVB_TERMINI.pds.lat,
+    point.lon - NAVB_TERMINI.pds.lon,
+  );
+  return distToPds < distToVerdun;
+}
+
+function isLegHeadingTowardPds(leg) {
+  const point = Number.isFinite(leg.from?.lat) && Number.isFinite(leg.from?.lon)
+    ? leg.from
+    : leg.to;
+  if (!Number.isFinite(point?.lat) || !Number.isFinite(point?.lon)) return true;
+  return !isCloserToPdsThanVerdun(point);
+}
+
 function nearestCoordinate(coords, stop) {
   if (!Number.isFinite(stop?.lon) || !Number.isFinite(stop?.lat)) return null;
 
@@ -130,15 +167,15 @@ function nearestCoordinate(coords, stop) {
   return index >= 0 ? { index, distance } : null;
 }
 
-function getLineBSegment(leg) {
-  const from = nearestCoordinate(LINE_B_COORDINATES, leg.from);
-  const to = nearestCoordinate(LINE_B_COORDINATES, leg.to);
-  // Les arrêts doivent correspondre au tracé B : tolérance totale d'environ 300 m.
+function getCustomLineSegment(coordinates, leg) {
+  const from = nearestCoordinate(coordinates, leg.from);
+  const to = nearestCoordinate(coordinates, leg.to);
+  // Les arrêts doivent correspondre au tracé : tolérance totale d'environ 300 m.
   if (!from || !to || from.distance + to.distance > 0.003) return null;
 
   const start = Math.min(from.index, to.index);
   const end = Math.max(from.index, to.index);
-  const coords = LINE_B_COORDINATES.slice(start, end + 1);
+  const coords = coordinates.slice(start, end + 1);
   if (from.index > to.index) coords.reverse();
 
   const snapStop = (stop) => {
@@ -153,9 +190,23 @@ function getLineBSegment(leg) {
   return coords;
 }
 
+function getLineBSegment(leg) {
+  return getCustomLineSegment(LINE_B_COORDINATES, leg);
+}
+
+function getNavbSegment(leg) {
+  const coordinates = isLegHeadingTowardPds(leg)
+    ? LINE_NAVB_VERDUN_TO_PDS_COORDINATES
+    : LINE_NAVB_PDS_TO_VERDUN_COORDINATES;
+  return getCustomLineSegment(coordinates, leg);
+}
+
 function getLegGeometry(leg) {
-  if (leg.mode !== "WALK" && getLegLineName(leg) === "B") {
-    return getLineBSegment(leg) || magnetizeLegGeometry(leg);
+  if (leg.mode !== "WALK") {
+    const lineName = getLegLineName(leg);
+    if (lineName === "B") return getLineBSegment(leg) || magnetizeLegGeometry(leg);
+    if (lineName === "NAVB")
+      return getNavbSegment(leg) || magnetizeLegGeometry(leg);
   }
   return magnetizeLegGeometry(leg);
 }
