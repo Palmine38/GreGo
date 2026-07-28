@@ -324,6 +324,16 @@ export default function Navbar({
             </li>
             <li>
               <a
+                href="https://paypal.me/palmine38"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setMenu(false)}
+                className="block px-4 py-2 hover:bg-gray-100"
+              >
+                Me soutenir
+              </a>
+            <li>
+              <a
                 href="https://github.com/Palmine38"
                 target="_blank"
                 rel="noopener noreferrer"
