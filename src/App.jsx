@@ -14,7 +14,7 @@ import SuiviBeta from "./suivi-beta.jsx";
 import InfoTrafic from "./infotrafic.jsx";
 import { applyTheme, normalizeTheme } from "./hooks/useTheme.js";
 import { preloadStops } from "./hooks/useStops.js";
-import { DevOverlay } from "./components/devOverlay.jsx";
+import { DevOverlay } from "./components/DevOverlay.jsx";
 import "./App.css";
 
 function DeviceGuard({ children }) {
