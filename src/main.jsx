@@ -4,6 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import "./index.css";
 import App from "./App.jsx";
 import { preloadLineRouteCache } from "./components/lines-icons.jsx";
+import { Analytics } from "@vercel/analytics/next";
 
 const container = document.getElementById("root");
 
@@ -13,12 +14,14 @@ const renderApp = () => {
       container,
       <StrictMode>
         <App />
+        <Analytics />
       </StrictMode>,
     );
   } else {
     createRoot(container).render(
       <StrictMode>
         <App />
+        <Analytics />
       </StrictMode>,
     );
   }
