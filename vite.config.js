@@ -5,6 +5,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: "0.0.0.0",
+    allowedHosts: ["elva-unbroke-supervigorously.ngrok-free.dev"],
     proxy: {
       "/tag": {
         target: "https://mobilites-m.fr",

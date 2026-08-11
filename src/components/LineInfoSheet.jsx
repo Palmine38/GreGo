@@ -9,6 +9,7 @@ export function LineInfoSheet({
   onClose,
   getLineDisruptions,
   initialSnap = 1,
+  onBack,
 }) {
   const [height, setHeight] = useState(60);
   // On garde la dernière ligne affichée pour que le contenu (et le Sheet
@@ -43,6 +44,9 @@ export function LineInfoSheet({
         <Sheet.Content>
           <div className="overflow-y-auto flex-1 px-4 pb-8">
             <div className="flex items-center gap-3 mb-4">
+              {onBack && (
+                <button type="button" onClick={onBack} aria-label="Retour à l'arrêt" className="flex size-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-lg font-bold text-slate-700">‹</button>
+              )}
               <LineIcon lineKey={displayedLine} size="w-10 h-10" />
               <div>
                 <p className="text-xs uppercase tracking-widest text-slate-400">

@@ -6,11 +6,16 @@ import { useDisruptions } from "./hooks/useDisruptions.js";
 import { useLineColors } from "./hooks/useLineColors.js";
 import { useSettings } from "./hooks/useSettings.js";
 import { JourneyCard } from "./components/JourneyCard.jsx";
-import { JourneyDetailsSheet } from "./components/JourneyDetailsSheet.jsx";
+import {
+  JourneyDetailsSheet,
+  getLegGeometry,
+} from "./components/JourneyDetailsSheet.jsx";
 import { JourneyResultsHeader } from "./components/JourneyResultsHeader.jsx";
 import { LineInfoSheet } from "./components/LineInfoSheet.jsx";
 import { NotificationToast } from "./components/NotificationToast.jsx";
 import StopPickerMap from "./components/StopPickerMap.jsx";
+import { StopDetailsSheet } from "./components/StopDetailsSheet.jsx";
+import { useGbfs } from "./hooks/useGbfs.js";
 import {
   buildOtpParams,
   filterByLine,
@@ -47,6 +52,46 @@ const getNextDateForTime = (timeValue, baseDate = new Date()) => {
   return date;
 };
 
+function isUsableLineGeometry(coordinates) {
+  return (
+    Array.isArray(coordinates) &&
+    coordinates.length > 1 &&
+    coordinates.every(
+      ([lon, lat]) =>
+        Number.isFinite(lon) &&
+        Number.isFinite(lat) &&
+        Math.abs(lon) <= 180 &&
+        Math.abs(lat) <= 90,
+    )
+  );
+}
+
+function getTransitLegForLine(plan, lineName) {
+  const candidates = (plan?.itineraries || [])
+    .flatMap((itinerary) => itinerary.legs || [])
+    .filter(
+      (candidate) =>
+        (candidate.transitLeg || candidate.mode !== "WALK") &&
+        String(
+          candidate.routeShortName ||
+            candidate.route ||
+            candidate.routeId ||
+            "",
+        )
+          .replace("SEM:", "")
+          .toUpperCase() === lineName &&
+        candidate.legGeometry?.points,
+    );
+
+  // L'API peut renvoyer plusieurs options. On garde le segment de la ligne
+  // qui contient le plus d'arrêts, plutôt que le premier tronçon parfois
+  // interrompu par une correspondance.
+  return candidates.sort(
+    (a, b) =>
+      (b.intermediateStops?.length || 0) - (a.intermediateStops?.length || 0),
+  )[0];
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 export default function FastResearch() {
   // ── Hooks partagés ────────────────────────────────────────────────────────
@@ -57,6 +102,8 @@ export default function FastResearch() {
     useDisruptions();
   const { lineColors } = useLineColors();
   const { settings, reloadSettings } = useSettings();
+  const { voiVehicles, citizStations, citizVehicleTypes } = useGbfs();
+  const stopLineRequestRef = useRef(0);
 
   // Préchargement fond de carte MapTiler
   useEffect(() => {
@@ -99,8 +146,7 @@ export default function FastResearch() {
     const [reference, coords] = value.split("::");
     const positions = Object.values(stopsMap).flat();
     const byId = positions.find(
-      (position) =>
-        position.id === value || position.stopId === reference,
+      (position) => position.id === value || position.stopId === reference,
     );
     if (byId || !coords) return byId || null;
 
@@ -139,7 +185,8 @@ export default function FastResearch() {
   const hasExactStopMatch =
     !!quickSearch.trim() &&
     Object.keys(stopsMap).some(
-      (stopName) => normalizeStopName(stopName) === normalizeStopName(quickSearch),
+      (stopName) =>
+        normalizeStopName(stopName) === normalizeStopName(quickSearch),
     );
   useEffect(() => {
     if (hasExactStopMatch) {
@@ -154,7 +201,9 @@ export default function FastResearch() {
   }, [quickSearch, hasExactStopMatch]);
 
   useEffect(() => {
-    getCurrentLocationCoords().then(setUserPosition).catch(() => {});
+    getCurrentLocationCoords()
+      .then(setUserPosition)
+      .catch(() => {});
   }, []);
 
   // ── UI panels ─────────────────────────────────────────────────────────────
@@ -181,6 +230,11 @@ export default function FastResearch() {
 
   // ── Line info sheet ───────────────────────────────────────────────────────
   const [selectedLineInfo, setSelectedLineInfo] = useState(null);
+  const [selectedMapStop, setSelectedMapStop] = useState(null);
+  const [activeStopLine, setActiveStopLine] = useState(null);
+  const [activeStopInfoLine, setActiveStopInfoLine] = useState(null);
+  const [activeStopLineTrace, setActiveStopLineTrace] = useState([]);
+  const [activeStopLineStops, setActiveStopLineStops] = useState([]);
 
   // ── Inputs cancel guard ───────────────────────────────────────────────────
   const initialValuesRef = useRef({
@@ -226,7 +280,9 @@ export default function FastResearch() {
           setTimeOffset(parsed.timeOffset);
           const cachedBaseDate = new Date(parsed.searchBaseDate);
           setSearchBaseDate(cachedBaseDate);
-          setSearchTime(parsed.searchTime || formatTimeInputValue(cachedBaseDate));
+          setSearchTime(
+            parsed.searchTime || formatTimeInputValue(cachedBaseDate),
+          );
           setQuickSearch(parsed.arr.split("::")[0]);
           return;
         }
@@ -273,7 +329,9 @@ export default function FastResearch() {
     } else {
       const from = findStop(depValue, lineValue);
       if (!from.length) {
-        setError(`L'arrêt de départ « ${depValue} » est introuvable. Sélectionnez un arrêt dans les suggestions.`);
+        setError(
+          `L'arrêt de départ « ${depValue} » est introuvable. Sélectionnez un arrêt dans les suggestions.`,
+        );
         setLoading(false);
         return;
       }
@@ -290,7 +348,9 @@ export default function FastResearch() {
     } else {
       const to = findStop(arrValue, lineValue);
       if (!to.length) {
-        setError(`L'arrêt d'arrivée « ${arrValue} » est introuvable. Sélectionnez un arrêt dans les suggestions.`);
+        setError(
+          `L'arrêt d'arrivée « ${arrValue} » est introuvable. Sélectionnez un arrêt dans les suggestions.`,
+        );
         setLoading(false);
         return;
       }
@@ -326,7 +386,10 @@ export default function FastResearch() {
       const res = await fetch(
         `https://data.mobilites-m.fr/api/routers/default/plan?${urlParams.toString()}`,
       );
-      if (!res.ok) throw Object.assign(new Error("Itinerary request failed"), { status: res.status });
+      if (!res.ok)
+        throw Object.assign(new Error("Itinerary request failed"), {
+          status: res.status,
+        });
       const json = await res.json();
       const itineraries = json.plan?.itineraries || [];
 
@@ -472,7 +535,185 @@ export default function FastResearch() {
     requestAnimationFrame(() => quickSearchRef.current?.focus());
   };
 
-  const selectQuickDestination = async (value, label = value.split("::")[0]) => {
+  const selectStopLine = async (lineKey, openInfo = true) => {
+    const rawLineKey = String(lineKey || "").toUpperCase();
+    const normalizedLine = rawLineKey.replace(/^[A-Z0-9]+:/, "");
+    const apiRouteId = rawLineKey.includes(":")
+      ? rawLineKey
+      : `SEM:${normalizedLine}`;
+    const apiRouteIdEncoded = encodeURIComponent(apiRouteId).replace(
+      /%3A/g,
+      ":",
+    );
+    const requestId = ++stopLineRequestRef.current;
+    // Si Fast Research affiche déjà cette ligne, sa géométrie est précisément
+    // celle visible sur la carte et celle de JourneyDetailsSheet. La réutiliser
+    // évite de recalculer une autre course de la même ligne.
+    const displayedJourneyLeg = getTransitLegForLine(
+      { itineraries: [{ legs: otpJourney?.allLegs || [] }] },
+      normalizedLine,
+    );
+    const displayedJourneyGeometry = displayedJourneyLeg
+      ? getLegGeometry(displayedJourneyLeg)
+      : [];
+    setActiveStopLine(normalizedLine);
+    setActiveStopInfoLine(openInfo ? normalizedLine : null);
+    setActiveStopLineTrace(
+      isUsableLineGeometry(displayedJourneyGeometry)
+        ? displayedJourneyGeometry
+        : [],
+    );
+    setActiveStopLineStops([]);
+    // Les clusters d'une ligne sont déjà ordonnés selon son parcours : ils
+    // constituent un repli fiable lorsque la géométrie détaillée n'est pas fournie.
+    try {
+      const response = await fetch(
+        `https://data.mobilites-m.fr/api/routers/default/index/routes/${apiRouteIdEncoded}/clusters`,
+      );
+      if (!response.ok) throw new Error("Unable to load line stops");
+      const clusters = await response.json();
+      const lineStops = (Array.isArray(clusters) ? clusters : [])
+        .map((cluster) => ({
+          name: cluster.name,
+          clusterId: cluster.id,
+          lon: Number(cluster.lon),
+          lat: Number(cluster.lat),
+        }))
+        .filter(
+          (cluster) =>
+            Number.isFinite(cluster.lon) && Number.isFinite(cluster.lat),
+        );
+      if (requestId !== stopLineRequestRef.current) return;
+      setActiveStopLineStops(lineStops);
+
+      const firstStop = lineStops[0];
+      const lastStop = lineStops[lineStops.length - 1];
+      let geometry = displayedJourneyGeometry;
+      if (
+        !isUsableLineGeometry(geometry) &&
+        firstStop?.clusterId &&
+        lastStop?.clusterId
+      ) {
+        // OTP reconnaît les identifiants de clusters, pas leurs coordonnées.
+        // Avec des lat/lon il échouait ou proposait une autre ligne, donc le
+        // fallback en segments droits était systématiquement affiché.
+        const params = buildOtpParams({
+          fromCoords: `${firstStop.name}::${firstStop.clusterId}`,
+          toCoords: `${lastStop.name}::${lastStop.clusterId}`,
+          queryTime: new Date(),
+          settings,
+        });
+        // Sans cette préférence, OTP peut construire un trajet multi-lignes
+        // et ne laisser à la ligne cliquée qu'un court tronçon.
+        params.set("preferredRoutes", `SEM:${normalizedLine}`);
+        params.set("otherThanPreferredRoutesPenalty", "999999");
+        try {
+          const planResponse = await fetch(
+            `https://data.mobilites-m.fr/api/routers/default/plan?${params}`,
+          );
+          if (planResponse.ok) {
+            const payload = await planResponse.json();
+            console.log(
+              "[selectStopLine] plan response",
+              normalizedLine,
+              payload,
+            );
+            const transitLeg = getTransitLegForLine(
+              payload.plan,
+              normalizedLine,
+            );
+            console.log(
+              "[selectStopLine] itineraries legs",
+              normalizedLine,
+              payload.plan.itineraries.map((it) =>
+                it.legs.map((leg) => ({
+                  mode: leg.mode,
+                  route: leg.routeShortName || leg.route || leg.routeId,
+                  transitLeg: leg.transitLeg,
+                  hasGeometry: !!leg.legGeometry?.points,
+                  nStops: leg.intermediateStops?.length,
+                })),
+              ),
+            );
+            console.log(
+              "[selectStopLine] transitLeg found?",
+              !!transitLeg,
+              transitLeg?.legGeometry?.points?.length,
+            );
+            // Même fonction que JourneyDetailsSheet : inclut les formes de
+            // référence et le recalage sur les arrêts du leg.
+            geometry = transitLeg ? getLegGeometry(transitLeg) : [];
+          }
+        } catch (err) {
+          console.error("[selectStopLine] Error fetching plan", err);
+          // Retain the stop-to-stop fallback if the planner is unavailable.
+        }
+      }
+
+      if (requestId !== stopLineRequestRef.current) return;
+      const stopFallback = lineStops.map((cluster) => [
+        cluster.lon,
+        cluster.lat,
+      ]);
+      // Certaines réponses OTP contiennent une polyline tronquée ou invalide.
+      // MapLibre ne dessine alors rien, même si les arrêts ont bien été chargés.
+      setActiveStopLineTrace(
+        isUsableLineGeometry(geometry) ? geometry : stopFallback,
+      );
+    } catch {
+      if (requestId !== stopLineRequestRef.current) return;
+      setActiveStopLineTrace([]);
+      setActiveStopLineStops([]);
+    }
+    // Le tracé apparaît derrière la fiche, qui reste ouverte sur l'arrêt.
+  };
+
+  const setStopAsArrival = async (stop) => {
+    const value = `${stop.name}::${stop.lat},${stop.lon}`;
+    setSelectedMapStop(null);
+    setActiveStopLine(null);
+    setActiveStopInfoLine(null);
+    setActiveStopLineTrace([]);
+    setActiveStopLineStops([]);
+    setError("");
+    setArr(value);
+    setQuickSearch(stop.name);
+    setQuickSearchActive(false);
+    try {
+      // La carte a généralement déjà fourni la position : on la réutilise pour
+      // ouvrir les détails sans relancer une demande de géolocalisation.
+      const location = userPosition || (await getCurrentLocationCoords());
+      setUserPosition(location);
+      const departure = `${CURRENT_LOCATION_LABEL}::${location.lat},${location.lon}`;
+      setDep(departure);
+      await search(0, departure, value, "", searchTime, true);
+    } catch (locationError) {
+      setError(
+        locationError.message || "Votre position est indisponible. Réessayez.",
+      );
+    }
+  };
+
+  const openMapStop = (stop) => {
+    setActiveStopLine(null);
+    setActiveStopInfoLine(null);
+    setActiveStopLineTrace([]);
+    setActiveStopLineStops([]);
+    setSelectedMapStop(stop);
+  };
+
+  const closeMapStop = () => {
+    setSelectedMapStop(null);
+    setActiveStopLine(null);
+    setActiveStopInfoLine(null);
+    setActiveStopLineTrace([]);
+    setActiveStopLineStops([]);
+  };
+
+  const selectQuickDestination = async (
+    value,
+    label = value.split("::")[0],
+  ) => {
     // La destination doit rester visible même si la géolocalisation est refusée
     // ou prend quelques secondes à répondre.
     setDep(CURRENT_LOCATION_VALUE);
@@ -491,7 +732,9 @@ export default function FastResearch() {
       setDep(departure);
       search(0, departure, value, "", searchTime, true);
     } catch (locationError) {
-      setError(locationError.message || "Votre position est indisponible. Réessayez.");
+      setError(
+        locationError.message || "Votre position est indisponible. Réessayez.",
+      );
       setLoading(false);
     }
   };
@@ -510,7 +753,8 @@ export default function FastResearch() {
     }
 
     const matchingAddress = addressSuggestions.find(
-      (address) => normalizeStopName(address.label) === normalizeStopName(query),
+      (address) =>
+        normalizeStopName(address.label) === normalizeStopName(query),
     );
     if (matchingAddress) {
       selectQuickDestination(matchingAddress.value, matchingAddress.label);
@@ -559,28 +803,106 @@ export default function FastResearch() {
         }}
       />
 
+      <NotificationToast
+        message={error}
+        onClose={() => setError("")}
+        variant={error.startsWith("Aucun") ? "warning" : "error"}
+      />
+
       <div className="fixed top-24 left-4 right-4 z-30">
         <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-lg">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="size-5 shrink-0 text-slate-400" aria-hidden="true"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>
-          <input ref={quickSearchRef} value={quickSearch} onChange={(event) => { setQuickSearch(event.target.value); setQuickSearchActive(true); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); submitQuickSearch(); } }} onFocus={() => setQuickSearchActive(true)} placeholder="On va où ?" className="min-w-0 flex-1 bg-transparent font-semibold text-slate-800 outline-none placeholder:text-slate-500" aria-label="Rechercher un arrêt ou une adresse" />
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            className="size-5 shrink-0 text-slate-400"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="6" />
+            <path d="m16 16 4 4" />
+          </svg>
+          <input
+            ref={quickSearchRef}
+            value={quickSearch}
+            onChange={(event) => {
+              setQuickSearch(event.target.value);
+              setQuickSearchActive(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                submitQuickSearch();
+              }
+            }}
+            onFocus={() => setQuickSearchActive(true)}
+            placeholder="On va où ?"
+            className="min-w-0 flex-1 bg-transparent font-semibold text-slate-800 outline-none placeholder:text-slate-500"
+            aria-label="Rechercher un arrêt ou une adresse"
+          />
         </div>
-        {!quickSearchActive && quickSearch && (loading || results.length === 0) && (
-          <div className="mt-2 flex items-center gap-2 rounded-xl bg-white/95 px-3 py-2 text-sm font-medium text-slate-700 shadow">
-            {loading && <span className="size-3 animate-pulse rounded-full bg-blue-600" aria-hidden="true" />}
-            <span>{loading ? `Recherche vers ${quickSearch}…` : `Destination : ${quickSearch}`}</span>
-          </div>
-        )}
-        <NotificationToast
-          message={error}
-          onClose={() => setError("")}
-          variant={error.startsWith("Aucun") ? "warning" : "error"}
-        />
+        {!quickSearchActive &&
+          quickSearch &&
+          (loading || results.length === 0) && (
+            <div className="mt-2 flex items-center gap-2 rounded-xl bg-white/95 px-3 py-2 text-sm font-medium text-slate-700 shadow">
+              {loading && (
+                <span
+                  className="size-3 animate-pulse rounded-full bg-blue-600"
+                  aria-hidden="true"
+                />
+              )}
+              <span>
+                {loading
+                  ? `Recherche vers ${quickSearch}…`
+                  : `Destination : ${quickSearch}`}
+              </span>
+            </div>
+          )}
         {quickSearchActive && quickSearch.trim() && !hasExactStopMatch && (
           <div className="mt-2 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 bg-white py-1 shadow-xl">
-            {stopSuggestions.length > 0 && <p className="px-4 pt-2 pb-1 text-[11px] font-bold tracking-widest text-slate-400">ARRÊTS</p>}
-            {stopSuggestions.map((stop) => <button key={`stop-${stop}`} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => selectQuickDestination(stop)} className="flex w-full flex-col px-4 py-3 text-left hover:bg-slate-50"><span className="text-sm font-semibold text-slate-800">{stop}</span><span className="text-xs text-slate-500">Arrêt</span></button>)}
-            {addressSuggestions.length > 0 && <p className="border-t border-slate-100 px-4 pt-3 pb-1 text-[11px] font-bold tracking-widest text-slate-400">ADRESSES</p>}
-            {addressSuggestions.map((address) => <button key={address.value} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => selectQuickDestination(address.value, address.label)} className="flex w-full flex-col px-4 py-3 text-left hover:bg-slate-50"><span className="text-sm font-semibold text-slate-800">{address.label}</span><span className="truncate text-xs text-slate-500">{address.detail}</span></button>)}
+            {stopSuggestions.length > 0 && (
+              <p className="px-4 pt-2 pb-1 text-[11px] font-bold tracking-widest text-slate-400">
+                ARRÊTS
+              </p>
+            )}
+            {stopSuggestions.map((stop) => (
+              <button
+                key={`stop-${stop}`}
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => selectQuickDestination(stop)}
+                className="flex w-full flex-col px-4 py-3 text-left hover:bg-slate-50"
+              >
+                <span className="text-sm font-semibold text-slate-800">
+                  {stop}
+                </span>
+                <span className="text-xs text-slate-500">Arrêt</span>
+              </button>
+            ))}
+            {addressSuggestions.length > 0 && (
+              <p className="border-t border-slate-100 px-4 pt-3 pb-1 text-[11px] font-bold tracking-widest text-slate-400">
+                ADRESSES
+              </p>
+            )}
+            {addressSuggestions.map((address) => (
+              <button
+                key={address.value}
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() =>
+                  selectQuickDestination(address.value, address.label)
+                }
+                className="flex w-full flex-col px-4 py-3 text-left hover:bg-slate-50"
+              >
+                <span className="text-sm font-semibold text-slate-800">
+                  {address.label}
+                </span>
+                <span className="truncate text-xs text-slate-500">
+                  {address.detail}
+                </span>
+              </button>
+            ))}
           </div>
         )}
       </div>
@@ -589,7 +911,6 @@ export default function FastResearch() {
         {/* Fast Research reste volontairement une vue carte : les résultats
             servent au calcul du tracé mais ne sont pas affichés au centre. */}
         <div className="hidden">
-
           {results.length > 0 && (
             <JourneyResultsHeader
               dep={resolveDisplayName(dep)}
@@ -609,9 +930,7 @@ export default function FastResearch() {
           <div className="space-y-2">
             {visibleResults.length === 0 ? (
               <div className="p-4 text-center text-gray-500">
-                {loading ? (
-                  "Recherche en cours..."
-                ) : null}
+                {loading ? "Recherche en cours..." : null}
               </div>
             ) : (
               visibleResults.map((item, idx) => (
@@ -701,6 +1020,18 @@ export default function FastResearch() {
           isOpen={!!selectedLineInfo}
           onClose={closeLineInfo}
           getLineDisruptions={getLineDisruptions}
+          initialSnap={0.6}
+        />
+
+        <StopDetailsSheet
+          stop={selectedMapStop}
+          isOpen={!!selectedMapStop}
+          onClose={closeMapStop}
+          onSetArrival={setStopAsArrival}
+          onLineSelect={selectStopLine}
+          activeLine={activeStopInfoLine}
+          onBack={() => setActiveStopInfoLine(null)}
+          getLineDisruptions={getLineDisruptions}
         />
 
         {/* Panneau recherche */}
@@ -738,10 +1069,18 @@ export default function FastResearch() {
           embedded
           journey={otpJourney}
           lineColors={lineColors}
+          voiVehicles={voiVehicles}
+          citizStations={citizStations}
+          citizVehicleTypes={citizVehicleTypes}
           allowAddressSelection={false}
           userPosition={userPosition}
           onSelect={(name) => selectQuickDestination(name)}
           onClose={() => setMapPickerOpen(false)}
+          onStopClick={openMapStop}
+          activeLine={activeStopLine}
+          activeLineTrace={activeStopLineTrace}
+          activeLineStops={activeStopLineStops}
+          selectedStop={selectedMapStop}
         />
       )}
     </>

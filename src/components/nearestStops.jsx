@@ -170,7 +170,7 @@ export function NearestStopsSheet({
                             Votre position
                           </span>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-slate-400">0 m</span>
+                            <span className="text-xs text-slate-400"></span>
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
                               fill="none"

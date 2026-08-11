@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import MapLibreMap, { Marker } from "react-map-gl/maplibre";
 import { createPortal } from "react-dom";
 import { MapSheet } from "./MapSheet.jsx";
@@ -9,7 +9,13 @@ import { NearestStopsSheet } from "./nearestStops.jsx";
 import lineB from "./lineB.json";
 import lineNAVBVerdunToPDS from "./lineNAVB_verdun_to_pds.json";
 import lineNAVBPdsToVerdun from "./lineNAVB_pds_to_verdun.json";
+import { GbfsSheet } from "./gbfsSheet.jsx";
 import { useTheme } from "../hooks/useTheme.js";
+import { usePerfSettings } from "../hooks/usePerfSettings.js";
+import { getLegGeometry as getJourneyLegGeometry } from "./JourneyDetailsSheet.jsx";
+import { MdElectricScooter } from "react-icons/md";
+import { FaCar } from "react-icons/fa";
+import { FaLocationPin } from "react-icons/fa6";
 
 const MAPTILER_STYLE_URL_LIGHT =
   "https://api.maptiler.com/maps/019d0d02-359b-7f4b-a797-bdeabca9dce3/style.json?key=7TQErbyvEqFlis3QMmSl";
@@ -17,7 +23,11 @@ const MAPTILER_STYLE_URL_DARK =
   "https://api.maptiler.com/maps/019f7c73-0431-726f-ae5d-598a16a06771/style.json?key=7TQErbyvEqFlis3QMmSl";
 
 const GRENOBLE_CENTER = { longitude: 5.74892, latitude: 45.18501 };
-
+function stripNetworkPrefix(routeName) {
+  return String(routeName || "")
+    .replace("SEM:", "")
+    .toUpperCase();
+}
 const throttle = (fn, delay) => {
   let lastCall = 0;
   return (...args) => {
@@ -97,7 +107,7 @@ async function autocompleteGeocode(query) {
 // la portion pertinente entre l'arrêt de départ et l'arrêt d'arrivée.
 //
 // Clé = nom de ligne tel qu'affiché (routeShortName / route / routeId, sans
-// le préfixe "SEM:", en majuscules) — donc "B" pour la ligne B.
+// le préfixe réseau, en majuscules) — donc "B" pour la ligne B.
 const CUSTOM_LINE_TRACES = {
   B: [
     [5.6993872, 45.2060992],
@@ -506,6 +516,31 @@ const NAVB_TRACES = [
   LINE_NAVB_VERDUN_TO_PDS_COORDINATES,
   LINE_NAVB_PDS_TO_VERDUN_COORDINATES,
 ];
+const NAVB_TERMINI = {
+  verdun: { lat: 45.18829, lon: 5.73164 }, // Grenoble, Verdun - Préfecture
+  pds: { lat: 45.1878, lon: 5.78454 }, // Gières, Plaine des Sports
+};
+
+function isCloserToPdsThanVerdun(point) {
+  const distToVerdun = Math.hypot(
+    point.lat - NAVB_TERMINI.verdun.lat,
+    point.lon - NAVB_TERMINI.verdun.lon,
+  );
+  const distToPds = Math.hypot(
+    point.lat - NAVB_TERMINI.pds.lat,
+    point.lon - NAVB_TERMINI.pds.lon,
+  );
+  return distToPds < distToVerdun;
+}
+
+function isLegHeadingTowardPds(leg) {
+  const point =
+    Number.isFinite(leg.from?.lat) && Number.isFinite(leg.from?.lon)
+      ? leg.from
+      : leg.to;
+  if (!Number.isFinite(point?.lat) || !Number.isFinite(point?.lon)) return true;
+  return !isCloserToPdsThanVerdun(point);
+}
 
 function nearestIndex(coords, point) {
   let bestIndex = -1,
@@ -584,6 +619,64 @@ function extractBestCustomShapeForLeg(candidateCoordsList, leg) {
   if (!best || bestScore > 0.003) return null;
   return extractCustomShapeForLeg(best, leg);
 }
+
+// ─── Clustering générique par grille (Voi + Citiz) ─────────────────────────
+// Regroupe des points dans un rayon donné (en degrés) via un quadrillage,
+// pour éviter le O(n²) d'une comparaison point à point.
+const CLUSTER_RADIUS_DEG = 0.00018; // ~20 m
+
+function clusterPoints(points, radiusDeg) {
+  const cellSize = radiusDeg;
+  const grid = new Map();
+  const cellKey = (lat, lon) =>
+    `${Math.floor(lat / cellSize)}:${Math.floor(lon / cellSize)}`;
+
+  points.forEach((p, i) => {
+    const key = cellKey(p.lat, p.lon);
+    if (!grid.has(key)) grid.set(key, []);
+    grid.get(key).push(i);
+  });
+
+  const used = new Array(points.length).fill(false);
+  const clusters = [];
+  const radiusSq = radiusDeg * radiusDeg;
+
+  for (let i = 0; i < points.length; i++) {
+    if (used[i]) continue;
+    const group = [i];
+    used[i] = true;
+    const queue = [i];
+    while (queue.length) {
+      const idx = queue.pop();
+      const p = points[idx];
+      const cellLat = Math.floor(p.lat / cellSize);
+      const cellLon = Math.floor(p.lon / cellSize);
+      for (let dLat = -1; dLat <= 1; dLat++) {
+        for (let dLon = -1; dLon <= 1; dLon++) {
+          const neighbors = grid.get(`${cellLat + dLat}:${cellLon + dLon}`);
+          if (!neighbors) continue;
+          for (const nIdx of neighbors) {
+            if (used[nIdx]) continue;
+            const q = points[nIdx];
+            const dd = (p.lat - q.lat) ** 2 + (p.lon - q.lon) ** 2;
+            if (dd <= radiusSq) {
+              used[nIdx] = true;
+              group.push(nIdx);
+              queue.push(nIdx);
+            }
+          }
+        }
+      }
+    }
+    clusters.push(group.map((idx) => points[idx]));
+  }
+  return clusters;
+}
+
+// Steps de zoom communs à tous les points de la carte (arrêts jaunes, Voi,
+// Citiz) : mêmes paliers que stopMarkerSize / circle-stroke-width des arrêts.
+const MARKER_RADIUS_STEPS = ["step", ["zoom"], 2.5, 11.5, 3.5, 14, 4, 16, 6.5];
+const MARKER_STROKE_STEPS = ["step", ["zoom"], 0, 11.5, 2, 16, 1.5];
 // ─────────────────────────────────────────────────────────────────────────
 
 export default function StopPickerMap({
@@ -599,6 +692,14 @@ export default function StopPickerMap({
   embedded = false,
   allowAddressSelection = true,
   userPosition,
+  onStopClick,
+  activeLine,
+  activeLineTrace = [],
+  activeLineStops = [],
+  selectedStop,
+  voiVehicles = [],
+  citizStations = [],
+  citizVehicleTypes = {},
 }) {
   const mapRef = useRef(null);
   const theme = useTheme();
@@ -623,11 +724,31 @@ export default function StopPickerMap({
   const [searchSuggestions, setSearchSuggestions] = useState([]);
   const searchDebounceRef = useRef(null);
   const hasCenteredOnUserRef = useRef(false);
+  // Toggles pour afficher/masquer les couches de mobilité partagée (Voi/Citiz)
+  const [showVoi, setShowVoi] = useState(false);
+  const [showCitiz, setShowCitiz] = useState(false);
 
   const showLabels = zoom >= 14;
-  const stopMarkerSize = zoom <= 11.5 ? 5 : zoom < 14 ? 7 : zoom >= 16 ? 8 : 13;
+  const stopMarkerSize = zoom <= 11.5 ? 5 : zoom < 14 ? 7 : zoom < 16 ? 8 : 13;
   const userMarkerSize = zoom <= 11.5 ? 7 : zoom < 14 ? 10 : 14;
   const SNAP_THRESHOLD_DEG = 0.00018;
+
+  // Une seule coordonnée invalide fait rejeter toute la LineString par MapLibre.
+  // Les arrêts restent, eux, affichables individuellement : on filtre donc ici
+  // aussi les données venant de la fiche d'arrêt.
+  const safeActiveLineTrace = useMemo(
+    () =>
+      activeLineTrace.filter(
+        (point) =>
+          Array.isArray(point) &&
+          point.length >= 2 &&
+          Number.isFinite(point[0]) &&
+          Number.isFinite(point[1]) &&
+          Math.abs(point[0]) <= 180 &&
+          Math.abs(point[1]) <= 90,
+      ),
+    [activeLineTrace],
+  );
 
   const nearestList = userLocation
     ? [...stops]
@@ -655,6 +776,26 @@ export default function StopPickerMap({
       return [];
     }
   }
+
+  const openStopDetails = async (stop) => {
+    const samePlace = stops.filter(
+      (candidate) =>
+        candidate.id === stop.id ||
+        (Math.abs(candidate.lat - stop.lat) < 0.0001 &&
+          Math.abs(candidate.lon - stop.lon) < 0.0001),
+    );
+    onStopClick?.({
+      ...stop,
+      stopId: stop.stopId || stop.id,
+      lines: [
+        ...new Set(
+          samePlace
+            .flatMap((candidate) => candidate.lines || [candidate.line])
+            .filter(Boolean),
+        ),
+      ],
+    });
+  };
 
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
@@ -780,10 +921,10 @@ export default function StopPickerMap({
   // Choix de la géométrie à afficher pour un leg : si une ligne a un tracé
   // personnalisé défini dans CUSTOM_LINE_TRACES (ex: "B"), on l'utilise en
   // priorité ; sinon on garde le comportement OTP habituel.
-  const getLegGeometry = (leg) => {
-    const routeName = (leg.routeShortName || leg.route || leg.routeId || "")
-      .replace("SEM:", "")
-      .toUpperCase();
+  const getPickerLegGeometry = (leg) => {
+    const routeName = stripNetworkPrefix(
+      leg.routeShortName || leg.route || leg.routeId || "",
+    );
 
     let coordinates;
 
@@ -791,7 +932,10 @@ export default function StopPickerMap({
       const extracted = extractCustomShapeForLeg(LINE_B_COORDINATES, leg);
       if (extracted) coordinates = extracted;
     } else if (routeName === "NAVB") {
-      const extracted = extractBestCustomShapeForLeg(NAVB_TRACES, leg);
+      const navbCoords = isLegHeadingTowardPds(leg)
+        ? LINE_NAVB_VERDUN_TO_PDS_COORDINATES
+        : LINE_NAVB_PDS_TO_VERDUN_COORDINATES;
+      const extracted = extractCustomShapeForLeg(navbCoords, leg);
       if (extracted) coordinates = extracted;
     } else {
       const custom = CUSTOM_LINE_TRACES[routeName];
@@ -822,21 +966,18 @@ export default function StopPickerMap({
     return snapped;
   };
 
+  // Même source de vérité que JourneyDetailsSheet.
+  const getLegGeometry = getJourneyLegGeometry;
   const journeyLegs = journey?.allLegs || [];
-  const journeyStops = journeyLegs.flatMap((leg) => [
-    leg.from,
-    ...(leg.intermediateStops || []),
-    leg.to,
-  ]);
   const journeyIntermediateStops = journeyLegs.flatMap((leg, legIndex) =>
     (leg.intermediateStops || [])
       .filter(
         (stop) => Number.isFinite(stop?.lat) && Number.isFinite(stop?.lon),
       )
       .map((stop, stopIndex) => {
-        const lineName = (leg.routeShortName || leg.route || leg.routeId || "")
-          .replace("SEM:", "")
-          .toUpperCase();
+        const lineName = stripNetworkPrefix(
+          leg.routeShortName || leg.route || leg.routeId || "",
+        );
         return {
           ...stop,
           legIndex,
@@ -905,15 +1046,48 @@ export default function StopPickerMap({
     return () => clearTimeout(timer);
   }, [journey]);
 
-  const visibleStops = stops.filter((s) => {
-    const isUsedByJourney = journeyStops.some(
-      (journeyStop) =>
-        Number.isFinite(journeyStop?.lat) &&
-        Number.isFinite(journeyStop?.lon) &&
-        Math.abs(journeyStop.lat - s.lat) < 0.0001 &&
-        Math.abs(journeyStop.lon - s.lon) < 0.0001,
+  useEffect(() => {
+    if (safeActiveLineTrace.length < 2) return undefined;
+    const lons = safeActiveLineTrace.map(([lon]) => lon);
+    const lats = safeActiveLineTrace.map(([, lat]) => lat);
+    const timer = setTimeout(
+      () =>
+        mapRef.current?.fitBounds(
+          [
+            [Math.min(...lons), Math.min(...lats)],
+            [Math.max(...lons), Math.max(...lats)],
+          ],
+          {
+            padding: { top: 140, bottom: 260, left: 36, right: 36 },
+            duration: 800,
+          },
+        ),
+      80,
     );
-    if (journeyLegs.length > 0 && zoom <= 16 && !isUsedByJourney) return false;
+    return () => clearTimeout(timer);
+  }, [safeActiveLineTrace]);
+
+  const activeLineMarkerStops = activeLineStops.filter(
+    (stop, index, all) =>
+      all.findIndex(
+        (candidate) =>
+          candidate.name === stop.name ||
+          (Math.abs(candidate.lat - stop.lat) < 0.0001 &&
+            Math.abs(candidate.lon - stop.lon) < 0.0001),
+      ) === index,
+  );
+
+  const visibleStops = stops.filter((s) => {
+    if (activeLine) {
+      // Les repères dédiés de la ligne active sont rendus plus bas : aucune
+      // couche générique (jaune ou libellé de poteau) ne doit se superposer.
+      return false;
+    }
+    if (journeyLegs.length > 0) {
+      // Les arrêts de l'itinéraire possèdent déjà leurs repères dédiés colorés.
+      // Ne jamais réafficher les marqueurs jaunes, même en zoomant fortement.
+      return false;
+    }
     if (!bounds) return true;
     const pad = zoom > 14 ? 0.005 : zoom > 12 ? 0.01 : 0.02;
     return (
@@ -924,14 +1098,194 @@ export default function StopPickerMap({
     );
   });
 
+  // Voi/Citiz : uniquement visibles quand on n'affiche ni un itinéraire ni le
+  // tracé d'une ligne, et seulement à partir d'un certain niveau de zoom
+  // pour ne pas noyer la carte de points quand on est dézoomé. En plus,
+  // chaque couche n'apparaît que si l'utilisateur l'a activée via les
+  // boutons ronds Voi/Citiz.
+  const showMobilityLayers = journeyLegs.length === 0 && !activeLine;
+
+  const visibleVoiVehicles =
+    showMobilityLayers && showVoi
+      ? voiVehicles.filter((v) => {
+          if (!bounds) return true;
+          const pad = 0.006;
+          return (
+            v.lat >= bounds.south - pad &&
+            v.lat <= bounds.north + pad &&
+            v.lon >= bounds.west - pad &&
+            v.lon <= bounds.east + pad
+          );
+        })
+      : [];
+
+  const voiClusters = useMemo(
+    () =>
+      visibleVoiVehicles.length
+        ? clusterPoints(visibleVoiVehicles, CLUSTER_RADIUS_DEG)
+        : [],
+    [visibleVoiVehicles],
+  );
+
+  const voiClusterGeoJson = useMemo(
+    () => ({
+      type: "FeatureCollection",
+      features: voiClusters.map((group, idx) => {
+        const lat = group.reduce((s, v) => s + v.lat, 0) / group.length;
+        const lon = group.reduce((s, v) => s + v.lon, 0) / group.length;
+        const scooterCount = group.filter((v) => v.type === "scooter").length;
+        const dominant = scooterCount >= group.length / 2 ? "scooter" : "bike";
+        return {
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [lon, lat] },
+          properties: { clusterId: idx, count: group.length, type: dominant },
+        };
+      }),
+    }),
+    [voiClusters],
+  );
+
+  const visibleCitizStations =
+    showMobilityLayers && showCitiz
+      ? citizStations.filter((s) => {
+          if (!bounds) return true;
+          const pad = 0.015;
+          return (
+            s.lat >= bounds.south - pad &&
+            s.lat <= bounds.north + pad &&
+            s.lon >= bounds.west - pad &&
+            s.lon <= bounds.east + pad
+          );
+        })
+      : [];
+
+  const citizClusters = useMemo(
+    () =>
+      visibleCitizStations.length
+        ? clusterPoints(visibleCitizStations, CLUSTER_RADIUS_DEG)
+        : [],
+    [visibleCitizStations],
+  );
+
+  const citizClusterGeoJson = useMemo(
+    () => ({
+      type: "FeatureCollection",
+      features: citizClusters.map((group, idx) => {
+        const lat = group.reduce((s, v) => s + v.lat, 0) / group.length;
+        const lon = group.reduce((s, v) => s + v.lon, 0) / group.length;
+        const totalVehicles = group.reduce(
+          (s, v) => s + (v.vehiclesAvailable || 0),
+          0,
+        );
+        return {
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [lon, lat] },
+          properties: { clusterId: idx, count: totalVehicles },
+        };
+      }),
+    }),
+    [citizClusters],
+  );
+
   const stopPointsGeoJson = {
     type: "FeatureCollection",
-    features: visibleStops.map((stop) => ({
-      type: "Feature",
-      geometry: { type: "Point", coordinates: [stop.lon, stop.lat] },
-      properties: { id: stop.id },
-    })),
+    // Les arrêts de la ligne active ont leur propre repère blanc / coloré ;
+    // on les retire donc de la couche jaune générique.
+    features: visibleStops
+      .filter((stop) => activeLineStops.length === 0)
+      .map((stop) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [stop.lon, stop.lat] },
+        properties: {
+          id: stop.id,
+          selected: Boolean(
+            selectedStop &&
+            (selectedStop.id === stop.id ||
+              (Math.abs(selectedStop.lat - stop.lat) < 0.0001 &&
+                Math.abs(selectedStop.lon - stop.lon) < 0.0001)),
+          ),
+        },
+      })),
   };
+
+  const [selectedGbfsStop, setSelectedGbfsStop] = useState(null);
+  const [gbfsSheetOpen, setGbfsSheetOpen] = useState(false);
+
+  const openVoiClusterSheet = async (cluster) => {
+    const lat = cluster.reduce((s, v) => s + v.lat, 0) / cluster.length;
+    const lon = cluster.reduce((s, v) => s + v.lon, 0) / cluster.length;
+    mapRef.current?.flyTo({
+      center: [lon, lat],
+      zoom: Math.max(zoom, 16),
+      duration: 500,
+    });
+    setSelectedGbfsStop({
+      kind: "voi",
+      address: "Chargement de l'adresse…",
+      vehicles: cluster,
+    });
+    setGbfsSheetOpen(true);
+
+    const address = await reverseGeocode(lat, lon);
+    setSelectedGbfsStop((prev) =>
+      prev && prev.kind === "voi"
+        ? { ...prev, address: address || "Adresse inconnue" }
+        : prev,
+    );
+  };
+
+  // Fusionne les vehicleTypesAvailable de toutes les stations Citiz du
+  // cluster (en sommant les compteurs par type de véhicule), pour afficher
+  // un unique bilan dans la sheet plutôt qu'une station isolée.
+  const openCitizClusterSheet = (stationGroup) => {
+    const lat =
+      stationGroup.reduce((s, v) => s + v.lat, 0) / stationGroup.length;
+    const lon =
+      stationGroup.reduce((s, v) => s + v.lon, 0) / stationGroup.length;
+    mapRef.current?.flyTo({
+      center: [lon, lat],
+      zoom: Math.max(zoom, 16),
+      duration: 500,
+    });
+
+    const merged = new Map();
+    stationGroup.forEach((station) => {
+      (station.vehicleTypesAvailable || []).forEach((entry) => {
+        const prevCount = merged.get(entry.vehicle_type_id) || 0;
+        merged.set(entry.vehicle_type_id, prevCount + (entry.count || 0));
+      });
+    });
+
+    const vehicles = [...merged.entries()].flatMap(([typeId, count]) => {
+      const info = citizVehicleTypes[typeId];
+      if (!info || !count) return [];
+      return [
+        {
+          id: `${typeId}-${lat}-${lon}`,
+          type: "car",
+          name: info.name,
+          make: info.make,
+          model: info.model,
+          propulsionType: info.propulsionType,
+          maxRangeMeters: info.maxRangeMeters,
+          count,
+          pricingPlanId: info.defaultPricingPlanId,
+        },
+      ];
+    });
+
+    const address =
+      stationGroup.length === 1
+        ? stationGroup[0].address || stationGroup[0].name
+        : `${stationGroup.length} stations Citiz à proximité`;
+
+    setSelectedGbfsStop({ kind: "citiz", address, vehicles });
+    setGbfsSheetOpen(true);
+  };
+
+  const closeGbfsSheet = () => setGbfsSheetOpen(false);
+
+  const { settings: perfSettings } = usePerfSettings();
 
   const userPointGeoJson = userLocation
     ? {
@@ -945,6 +1299,10 @@ export default function StopPickerMap({
 
   const updateBounds = useCallback(() => {
     if (!mapRef.current) return;
+    const z = mapRef.current.getZoom();
+    if (perfSettings.devMode && perfSettings.devOverlay) {
+      console.log("Current zoom:", z); // ← Ici tu vois le zoom en temps réel
+    }
     const b = mapRef.current.getBounds();
     setBounds({
       north: b.getNorth(),
@@ -972,6 +1330,24 @@ export default function StopPickerMap({
 
   const handleMapClick = useCallback(
     async (e) => {
+      const voiFeature = e.features?.find(
+        (f) => f.layer.id === "voi-points-circles",
+      );
+      if (voiFeature) {
+        const group = voiClusters[voiFeature.properties.clusterId];
+        if (group) openVoiClusterSheet(group);
+        return;
+      }
+
+      const citizFeature = e.features?.find(
+        (f) => f.layer.id === "citiz-points-circles",
+      );
+      if (citizFeature) {
+        const group = citizClusters[citizFeature.properties.clusterId];
+        if (group) openCitizClusterSheet(group);
+        return;
+      }
+
       const { lat, lng } = e.lngLat;
       let closest = null,
         minDist = Infinity;
@@ -983,6 +1359,10 @@ export default function StopPickerMap({
         }
       });
       if (closest && minDist < SNAP_THRESHOLD_DEG) {
+        if (onStopClick) {
+          openStopDetails(closest);
+          return;
+        }
         setPendingStop({
           name: closest.name,
           lat: closest.lat,
@@ -1002,7 +1382,7 @@ export default function StopPickerMap({
           });
       }
     },
-    [stops, allowAddressSelection],
+    [stops, allowAddressSelection, voiClusters, citizClusters],
   );
 
   const handleLocate = () => {
@@ -1192,6 +1572,40 @@ export default function StopPickerMap({
                     )}
                   </button>
                 )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowVoi((v) => !v);
+                  }}
+                  className={`absolute ${embedded ? "top-40 left-4" : "top-28 left-3"} z-10 flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-md transition-all duration-200`}
+                  style={{
+                    filter: showVoi ? "none" : "grayscale(1) opacity(0.55)",
+                  }}
+                  aria-label="Afficher les Voi"
+                >
+                  <img
+                    src="/GBFS/VoiSquared.svg"
+                    alt="Voi"
+                    className="w-6 h-6"
+                  />
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowCitiz((v) => !v);
+                  }}
+                  className={`absolute ${embedded ? "top-52 left-4" : "top-40 left-3"} z-10 flex items-center justify-center w-10 h-10 rounded-full bg-white shadow-md transition-all duration-200`}
+                  style={{
+                    filter: showCitiz ? "none" : "grayscale(1) opacity(0.55)",
+                  }}
+                  aria-label="Afficher les Citiz"
+                >
+                  <img
+                    src="/GBFS/CitizSquared.svg"
+                    alt="Citiz"
+                    className="w-7 h-7"
+                  />
+                </button>
                 <MapLibreMap
                   ref={mapRef}
                   mapStyle={mapStyle}
@@ -1202,26 +1616,69 @@ export default function StopPickerMap({
                   style={{ width: "100%", height: "100%" }}
                   onMove={handleMove}
                   onClick={handleMapClick}
+                  interactiveLayerIds={[
+                    "voi-points-circles",
+                    "citiz-points-circles",
+                  ]}
                   cursor={allowAddressSelection ? "crosshair" : "grab"}
                 >
-                  <Source
-                    id="stop-points"
-                    type="geojson"
-                    data={stopPointsGeoJson}
-                  >
-                    <Layer
-                      id="stop-points-circles"
-                      type="circle"
-                      beforeId="Road labels"
-                      paint={{
-                        "circle-radius": stopMarkerSize / 2,
-                        "circle-color": "#facc15",
-                        "circle-stroke-width":
-                          zoom >= 16 ? 1.5 : zoom <= 11.5 ? 0 : 2,
-                        "circle-stroke-color": "#ffffff",
+                  {safeActiveLineTrace.length > 1 && (
+                    <Source
+                      id="active-stop-line"
+                      type="geojson"
+                      data={{
+                        type: "Feature",
+                        geometry: {
+                          type: "LineString",
+                          coordinates: safeActiveLineTrace,
+                        },
                       }}
-                    />
-                  </Source>
+                    >
+                      <Layer
+                        id="active-stop-line-stroke"
+                        type="line"
+                        beforeId="Road labels"
+                        paint={{
+                          "line-color":
+                            lineColors?.[activeLine] ||
+                            LINE_COLORS[activeLine] ||
+                            "#2563eb",
+                          "line-width": 5,
+                        }}
+                        layout={{ "line-cap": "round", "line-join": "round" }}
+                      />
+                    </Source>
+                  )}
+                  {zoom > 7 && !activeLine && journeyLegs.length === 0 && (
+                    <Source
+                      id="stop-points"
+                      type="geojson"
+                      data={stopPointsGeoJson}
+                    >
+                      <Layer
+                        id="stop-points-circles"
+                        type="circle"
+                        beforeId="Road labels"
+                        paint={{
+                          "circle-radius": [
+                            "case",
+                            ["boolean", ["get", "selected"], false],
+                            Math.max(stopMarkerSize / 2 + 3, 8),
+                            stopMarkerSize / 2,
+                          ],
+                          "circle-color": [
+                            "case",
+                            ["boolean", ["get", "selected"], false],
+                            "#64748B",
+                            "#facc15",
+                          ],
+                          "circle-stroke-width":
+                            zoom >= 16 ? 1.5 : zoom <= 11.5 ? 0 : 2,
+                          "circle-stroke-color": "#ffffff",
+                        }}
+                      />
+                    </Source>
+                  )}
                   {zoom >= 14 && userPointGeoJson && (
                     <Source
                       id="user-point"
@@ -1241,38 +1698,42 @@ export default function StopPickerMap({
                       />
                     </Source>
                   )}
-                  {visibleStops.map((stop, i) => (
-                    <Marker
-                      key={`${stop.id}-${stop.lat}-${stop.lon}`}
-                      longitude={stop.lon}
-                      latitude={stop.lat}
-                      anchor="bottom"
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          flexDirection: "column",
-                          alignItems: "center",
-                          cursor: "pointer",
-                          transform: `translateY(-${stopMarkerSize / 2 + 4}px)`,
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setPendingStop({
-                            name: stop.name,
-                            lat: stop.lat,
-                            lon: stop.lon,
-                            isAddress: false,
-                            isNearest: false,
-                          });
-                          mapRef.current?.flyTo({
-                            center: [stop.lon, stop.lat],
-                            zoom: Math.max(zoom, 15),
-                            duration: 600,
-                          });
-                        }}
+                  {showLabels &&
+                    visibleStops.map((stop, i) => (
+                      <Marker
+                        key={`${stop.id}-${stop.lat}-${stop.lon}`}
+                        longitude={stop.lon}
+                        latitude={stop.lat}
+                        anchor="bottom"
                       >
-                        {showLabels && (
+                        <div
+                          style={{
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            cursor: "pointer",
+                            transform: `translateY(-${stopMarkerSize / 2 + 4}px)`,
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (onStopClick) {
+                              openStopDetails(stop);
+                              return;
+                            }
+                            setPendingStop({
+                              name: stop.name,
+                              lat: stop.lat,
+                              lon: stop.lon,
+                              isAddress: false,
+                              isNearest: false,
+                            });
+                            mapRef.current?.flyTo({
+                              center: [stop.lon, stop.lat],
+                              zoom: Math.max(zoom, 15),
+                              duration: 600,
+                            });
+                          }}
+                        >
                           <span
                             style={{
                               fontSize: "10px",
@@ -1289,10 +1750,172 @@ export default function StopPickerMap({
                           >
                             {stop.name}
                           </span>
-                        )}
-                      </div>
+                        </div>
+                      </Marker>
+                    ))}
+                  {activeLineMarkerStops.map((stop, index) => (
+                    <Marker
+                      key={`active-line-stop-${index}`}
+                      longitude={stop.lon}
+                      latitude={stop.lat}
+                      anchor="center"
+                    >
+                      <div
+                        title={stop.name}
+                        style={{
+                          width: 8,
+                          height: 8,
+                          borderRadius: "50%",
+                          backgroundColor: "white",
+                          border: `2px solid ${lineColors?.[activeLine] || LINE_COLORS[activeLine] || "#2563eb"}`,
+                          boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+                          pointerEvents: "none",
+                        }}
+                      />
                     </Marker>
                   ))}
+                  {citizClusterGeoJson.features.length > 0 && zoom <= 14 && (
+                    <Source
+                      id="citiz-points"
+                      type="geojson"
+                      data={citizClusterGeoJson}
+                    >
+                      <Layer
+                        id="citiz-points-circles"
+                        type="circle"
+                        beforeId="Road labels"
+                        paint={{
+                          "circle-radius": stopMarkerSize / 2,
+                          "circle-color": "#4ac2b6",
+                          "circle-stroke-width": 0,
+                          "circle-stroke-color": "#ffffff",
+                        }}
+                      />
+                      <Layer
+                        id="citiz-points-labels"
+                        type="symbol"
+                        minzoom={14}
+                        layout={{
+                          "text-field": ["get", "count"],
+                          "text-size": 11,
+                          "text-font": ["Open Sans Bold"],
+                          "text-allow-overlap": true,
+                          "text-ignore-placement": true,
+                        }}
+                        paint={{
+                          "text-color": "#ffffff",
+                        }}
+                      />
+                    </Source>
+                  )}
+                  {zoom > 14 &&
+                    citizClusters.map((group, idx) => {
+                      const lat =
+                        group.reduce((s, v) => s + v.lat, 0) / group.length;
+                      const lon =
+                        group.reduce((s, v) => s + v.lon, 0) / group.length;
+                      return (
+                        <Marker
+                          key={`citiz-pin-${idx}`}
+                          longitude={lon}
+                          latitude={lat}
+                          anchor="bottom"
+                        >
+                          <div
+                            style={{
+                              position: "relative",
+                              width: 26,
+                              height: 26,
+                              cursor: "pointer",
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openCitizClusterSheet(group);
+                            }}
+                          >
+                            <FaLocationPin
+                              size={26}
+                              color="#4ac2b6"
+                              style={{ position: "absolute", top: 0, left: 0 }}
+                            />
+                            <FaCar
+                              color="white"
+                              size={11}
+                              style={{
+                                position: "absolute",
+                                top: 5,
+                                left: "50%",
+                                transform: "translateX(-50%)",
+                              }}
+                            />
+                          </div>
+                        </Marker>
+                      );
+                    })}
+
+                  {voiClusterGeoJson.features.length > 0 && zoom <= 14 && (
+                    <Source
+                      id="voi-points"
+                      type="geojson"
+                      data={voiClusterGeoJson}
+                    >
+                      <Layer
+                        id="voi-points-circles"
+                        type="circle"
+                        beforeId="Road labels"
+                        paint={{
+                          "circle-radius": stopMarkerSize / 2,
+                          "circle-color": "#F26961",
+                          "circle-stroke-width": 0,
+                          "circle-stroke-color": "#ffffff",
+                        }}
+                      />
+                    </Source>
+                  )}
+                  {zoom > 14 &&
+                    voiClusters.map((group, idx) => {
+                      const lat =
+                        group.reduce((s, v) => s + v.lat, 0) / group.length;
+                      const lon =
+                        group.reduce((s, v) => s + v.lon, 0) / group.length;
+                      return (
+                        <Marker
+                          key={`voi-pin-${idx}`}
+                          longitude={lon}
+                          latitude={lat}
+                          anchor="bottom"
+                        >
+                          <div
+                            style={{
+                              position: "relative",
+                              width: 26,
+                              height: 26,
+                              cursor: "pointer",
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openVoiClusterSheet(group);
+                            }}
+                          >
+                            <FaLocationPin
+                              size={26}
+                              color="#F26961"
+                              style={{ position: "absolute", top: 0, left: 0 }}
+                            />
+                            <MdElectricScooter
+                              color="white"
+                              size={12}
+                              style={{
+                                position: "absolute",
+                                top: 5,
+                                left: "50%",
+                                transform: "translateX(-50%)",
+                              }}
+                            />
+                          </div>
+                        </Marker>
+                      );
+                    })}
                   {journeyIntermediateStops.map((stop) => (
                     <Marker
                       key={`journey-intermediate-${stop.legIndex}-${stop.stopIndex}`}
@@ -1352,102 +1975,102 @@ export default function StopPickerMap({
                       />
                     </Source>
                   )}
-                  {journeyLegs.map((leg, index) => {
-                    const coordinates = getLegGeometry(leg);
-                    if (coordinates.length < 2) return null;
-                    const routeName = (
-                      leg.routeShortName ||
-                      leg.route ||
-                      leg.routeId ||
-                      ""
-                    )
-                      .replace("SEM:", "")
-                      .toUpperCase();
-                    const isWalk = leg.mode === "WALK";
-                    const color =
-                      LINE_COLORS[routeName] ||
-                      lineColors?.[routeName] ||
-                      "#94A3B8";
-                    return (
-                      <Source
-                        key={`journey-leg-${index}`}
-                        id={`journey-leg-${index}`}
-                        type="geojson"
-                        data={{
-                          type: "Feature",
-                          geometry: {
-                            type: "LineString",
-                            coordinates,
-                          },
-                        }}
-                      >
-                        <Layer
-                          id={`journey-leg-line-${index}`}
-                          type="line"
-                          beforeId="Road labels"
-                          paint={{
-                            "line-color": isWalk ? "#94A3B8" : color,
-                            "line-width": isWalk ? 3 : 5,
-                            "line-dasharray": isWalk ? [2, 2] : [1],
+                  {!activeLine &&
+                    journeyLegs.map((leg, index) => {
+                      const coordinates = getLegGeometry(leg);
+                      if (coordinates.length < 2) return null;
+                      const routeName = stripNetworkPrefix(
+                        leg.routeShortName || leg.route || leg.routeId || "",
+                      );
+                      const isWalk = leg.mode === "WALK";
+                      const color =
+                        LINE_COLORS[routeName] ||
+                        lineColors?.[routeName] ||
+                        "#94A3B8";
+                      return (
+                        <Source
+                          key={`journey-leg-${index}`}
+                          id={`journey-leg-${index}`}
+                          type="geojson"
+                          data={{
+                            type: "Feature",
+                            geometry: {
+                              type: "LineString",
+                              coordinates,
+                            },
                           }}
-                          layout={{ "line-cap": "round", "line-join": "round" }}
-                        />
-                      </Source>
-                    );
-                  })}
-                  {vectorEndpoints.map((endpoint) => {
-                    const isFinalEndpoint =
-                      endpoint.legIndex === journeyLegs.length - 1 &&
-                      endpoint.type === "end";
-                    return (
-                      <Marker
-                        key={`vector-endpoint-${endpoint.legIndex}-${endpoint.type}`}
-                        longitude={endpoint.coords[0]}
-                        latitude={endpoint.coords[1]}
-                        anchor="center"
-                      >
-                        <div
-                          style={{
-                            position: "relative",
-                            width: 10,
-                            height: 10,
-                            pointerEvents: "none",
-                          }}
+                        >
+                          <Layer
+                            id={`journey-leg-line-${index}`}
+                            type="line"
+                            beforeId="Road labels"
+                            paint={{
+                              "line-color": isWalk ? "#94A3B8" : color,
+                              "line-width": isWalk ? 3 : 5,
+                              "line-dasharray": isWalk ? [2, 2] : [1],
+                            }}
+                            layout={{
+                              "line-cap": "round",
+                              "line-join": "round",
+                            }}
+                          />
+                        </Source>
+                      );
+                    })}
+                  {!activeLine &&
+                    vectorEndpoints.map((endpoint) => {
+                      const isFinalEndpoint =
+                        endpoint.legIndex === journeyLegs.length - 1 &&
+                        endpoint.type === "end";
+                      return (
+                        <Marker
+                          key={`vector-endpoint-${endpoint.legIndex}-${endpoint.type}`}
+                          longitude={endpoint.coords[0]}
+                          latitude={endpoint.coords[1]}
+                          anchor="center"
                         >
                           <div
                             style={{
+                              position: "relative",
                               width: 10,
                               height: 10,
-                              borderRadius: "50%",
-                              backgroundColor: "white",
-                              border: "2px solid #64748B",
-                              boxShadow: "0 1px 4px rgba(0,0,0,0.35)",
+                              pointerEvents: "none",
                             }}
-                          />
-                          {isFinalEndpoint && arrivalCoords?.name && (
-                            <span
+                          >
+                            <div
                               style={{
-                                position: "absolute",
-                                top: 14,
-                                left: "50%",
-                                transform: "translateX(-50%)",
-                                borderRadius: 4,
-                                padding: "1px 5px",
-                                backgroundColor: "rgba(255,255,255,0.92)",
-                                color: "#1e293b",
-                                fontSize: 10,
-                                fontWeight: 600,
-                                whiteSpace: "nowrap",
-                                boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+                                width: 10,
+                                height: 10,
+                                borderRadius: "50%",
+                                backgroundColor: "white",
+                                border: "2px solid #64748B",
+                                boxShadow: "0 1px 4px rgba(0,0,0,0.35)",
                               }}
-                            >
-                              Arrivée · {arrivalCoords.name}
-                            </span>
-                          )}
-                        </div>
-                      </Marker>
-                    );
-                  })}
+                            />
+                            {isFinalEndpoint && arrivalCoords?.name && (
+                              <span
+                                style={{
+                                  position: "absolute",
+                                  top: 14,
+                                  left: "50%",
+                                  transform: "translateX(-50%)",
+                                  borderRadius: 4,
+                                  padding: "1px 5px",
+                                  backgroundColor: "rgba(255,255,255,0.92)",
+                                  color: "#1e293b",
+                                  fontSize: 10,
+                                  fontWeight: 600,
+                                  whiteSpace: "nowrap",
+                                  boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
+                                }}
+                              >
+                                Arrivée · {arrivalCoords.name}
+                              </span>
+                            )}
+                          </div>
+                        </Marker>
+                      );
+                    })}
                   {departureCoords && !isOriginDeparture && (
                     <Marker
                       longitude={departureCoords.lon}
@@ -1763,6 +2386,14 @@ export default function StopPickerMap({
           )}
         </div>
       </MapSheet>
+
+      <GbfsSheet
+        isOpen={gbfsSheetOpen}
+        onClose={closeGbfsSheet}
+        kind={selectedGbfsStop?.kind}
+        address={selectedGbfsStop?.address}
+        vehicles={selectedGbfsStop?.vehicles}
+      />
 
       {/* Sheet nearest — portal séparé */}
       <NearestStopsSheet

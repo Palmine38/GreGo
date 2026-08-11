@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Navbar from "./navbar.jsx";
 import { applyTheme, normalizeTheme, THEMES } from "./hooks/useTheme.js";
+import { usePerfSettings } from "./hooks/usePerfSettings.js";
 import { NotificationToast } from "./components/NotificationToast.jsx";
 const DEBUG = true;
 
@@ -29,6 +30,7 @@ function itinerariesToSlider(num) {
 export default function Settings() {
   const fileInputRef = useRef(null);
   const isFirstRender = useRef(true);
+  const { settings: perfSettings, setOverlayVisible } = usePerfSettings();
 
   const getInitialSettings = () => {
     try {
@@ -164,7 +166,15 @@ export default function Settings() {
         showIntermediateStops,
         theme,
       });
-  }, [wheelchair, walkSpeed, numItineraries, headerLines, showJourneyDisruptions, showIntermediateStops, theme]);
+  }, [
+    wheelchair,
+    walkSpeed,
+    numItineraries,
+    headerLines,
+    showJourneyDisruptions,
+    showIntermediateStops,
+    theme,
+  ]);
 
   const speedInKmh = (walkSpeed * 3.6).toFixed(1);
   const handleSpeedChange = (kmh) => setWalkSpeed(kmh / 3.6);
@@ -192,7 +202,10 @@ export default function Settings() {
 
   return (
     <>
-      <NotificationToast message={importError} onClose={() => setImportError("")} />
+      <NotificationToast
+        message={importError}
+        onClose={() => setImportError("")}
+      />
       <Navbar
         shiftCompactBarForAction={isPreparingTrips}
         actionBarFurtherLeft
@@ -366,6 +379,25 @@ export default function Settings() {
               </label>
               <p className="text-xs text-gray-500 mt-1">
                 Affiche les arrêts desservis entre le départ et l'arrivée.
+              </p>
+            </div>
+
+            <div className="border-t border-gray-200 pt-4 pb-4">
+              <label className="flex items-center justify-between cursor-pointer gap-4">
+                <span className="text-sm font-semibold">
+                  Afficher les statistiques
+                </span>
+                <input
+                  type="checkbox"
+                  checked={perfSettings.devMode && perfSettings.devOverlay}
+                  onChange={(e) => setOverlayVisible(e.target.checked)}
+                  className="w-4 h-4 cursor-pointer flex-shrink-0"
+                />
+              </label>
+              <p className="text-xs text-gray-500 mt-1">
+                Affiche un encart avec les indicateurs de performance (images
+                par seconde, mémoire, requêtes réseau...) en haut à droite de
+                l'écran.
               </p>
             </div>
 

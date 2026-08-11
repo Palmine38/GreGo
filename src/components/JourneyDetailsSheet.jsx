@@ -201,7 +201,9 @@ function getNavbSegment(leg) {
   return getCustomLineSegment(coordinates, leg);
 }
 
-function getLegGeometry(leg) {
+// Exporté pour que les autres vues de carte utilisent exactement la même
+// logique de tracé (notamment les géométries de référence B et NAVB).
+export function getLegGeometry(leg) {
   if (leg.mode !== "WALK") {
     const lineName = getLegLineName(leg);
     if (lineName === "B") return getLineBSegment(leg) || magnetizeLegGeometry(leg);

@@ -107,6 +107,15 @@ export default function MesTrajets() {
     if (!stop.length) return null;
     return { lat: stop[0].lat, lon: stop[0].lon, name: stop[0].name };
   };
+
+  const findStopPosition = (shortId) => {
+    if (!shortId) return null;
+    const positions = Object.values(stopsMap).flat();
+    return positions.find(
+      (position) => position.stopId === shortId || position.id === shortId,
+    );
+  };
+
   const findPositionForValue = (value, preferredLine) => {
     if (!value?.includes("::")) return null;
     const [reference, coords] = value.split("::");
@@ -151,6 +160,7 @@ export default function MesTrajets() {
   const [loadedFromStorage, setLoadedFromStorage] = useState(false);
   const hasLoadedRef = useRef(false);
   const loadedTrajetsRef = useRef(null);
+  const storedTrajetsSearchedRef = useRef(false);
   const trajetsRef = useRef(trajets);
   const currentTrajetRef = useRef(currentTrajet);
   const autoRefreshingRef = useRef(false);
@@ -343,9 +353,10 @@ export default function MesTrajets() {
 
         if (parsed[activeKey]) {
           setCurrentTrajet(activeKey);
+          currentTrajetRef.current = activeKey;
           const stored = parsed[activeKey];
-          setDep(stored.depId || stored.depName || "");
-          setArr(stored.arrId || stored.arrName || "");
+          setDep(stored.depName || stored.depId || "");
+          setArr(stored.arrName || stored.arrId || "");
           setLine(stored.line || "");
         }
       } catch (e) {
@@ -362,29 +373,31 @@ export default function MesTrajets() {
     localStorage.setItem("tag-express-active-trajet", activeKey);
   }, []);
 
-  // ── Recherche automatique après chargement des stops ─────────────────────
+  // ── Recherche automatique après chargement des arrêts pour corriger les noms
   useEffect(() => {
-    if (!stopsLoaded || !loadedFromStorage) return;
+    if (!loadedFromStorage || storedTrajetsSearchedRef.current) return;
+    if (!stopsLoaded) return;
+
     TRAJET_KEYS.forEach((t) => {
-      const trajet = trajetsRef.current[t];
+      const trajet = loadedTrajetsRef.current?.[t] || trajetsRef.current[t];
       if (
-        (trajet?.depName || trajet?.depId) &&
-        (trajet?.arrName || trajet?.arrId)
+        trajet?.depId &&
+        trajet?.arrId &&
+        (!trajet.depName ||
+          !trajet.arrName ||
+          trajet.depName === trajet.depId ||
+          trajet.arrName === trajet.arrId)
       ) {
-        search(0, {
-          dep: trajet.depId || trajet.depName,
-          arr: trajet.arrId || trajet.arrName,
-          line: trajet.line,
-          trajetKey: t,
-          keepInputsOpen: true,
-        });
+        searchById(t, trajet);
       }
     });
-  }, [stopsLoaded]);
+
+    storedTrajetsSearchedRef.current = true;
+  }, [loadedFromStorage, stopsLoaded]);
 
   // ── Rafraîchissement automatique toutes les 2 minutes ─────────────────────
   useEffect(() => {
-    if (!stopsLoaded || !loadedFromStorage) return;
+    if (!loadedFromStorage) return;
     const interval = setInterval(() => {
       TRAJET_KEYS.forEach((t) => {
         const trajet = trajetsRef.current[t];
@@ -392,18 +405,28 @@ export default function MesTrajets() {
           (trajet?.depName || trajet?.depId) &&
           (trajet?.arrName || trajet?.arrId)
         ) {
-          search(0, {
-            dep: trajet.depId || trajet.depName,
-            arr: trajet.arrId || trajet.arrName,
-            line: trajet.line,
-            trajetKey: t,
-            keepInputsOpen: true,
-          });
+          if (trajet.depId && trajet.arrId) {
+            search(0, {
+              dep: trajet.depId || trajet.depName,
+              arr: trajet.arrId || trajet.arrName,
+              line: trajet.line,
+              trajetKey: t,
+              keepInputsOpen: true,
+            });
+          } else if (stopsLoaded) {
+            search(0, {
+              dep: trajet.depName || trajet.depId,
+              arr: trajet.arrName || trajet.arrId,
+              line: trajet.line,
+              trajetKey: t,
+              keepInputsOpen: true,
+            });
+          }
         }
       });
     }, 120000);
     return () => clearInterval(interval);
-  }, [stopsLoaded, loadedFromStorage]);
+  }, [loadedFromStorage, stopsLoaded]);
 
   // ── URL params ────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -460,6 +483,36 @@ export default function MesTrajets() {
     const arrId = arrPosition?.id || trajet.arrId;
     if (!depId || !arrId) return;
 
+    const depName = depPosition?.name || trajet.depName || trajet.depId;
+    const arrName = arrPosition?.name || trajet.arrName || trajet.arrId;
+
+    if (stopsLoaded) {
+      let updated = false;
+      const nextTrajets = { ...trajetsRef.current };
+      if (!nextTrajets[trajetKey]?.depName && depPosition?.name) {
+        nextTrajets[trajetKey] = {
+          ...nextTrajets[trajetKey],
+          depName: depPosition.name,
+        };
+        updated = true;
+      }
+      if (!nextTrajets[trajetKey]?.arrName && arrPosition?.name) {
+        nextTrajets[trajetKey] = {
+          ...nextTrajets[trajetKey],
+          arrName: arrPosition.name,
+        };
+        updated = true;
+      }
+      if (updated) {
+        setTrajets(nextTrajets);
+        trajetsRef.current = nextTrajets;
+        localStorage.setItem(
+          "tag-express-trajets",
+          JSON.stringify(nextTrajets),
+        );
+      }
+    }
+
     const savedSettings = JSON.parse(
       localStorage.getItem("tag-express-settings") || "{}",
     );
@@ -487,8 +540,8 @@ export default function MesTrajets() {
       const itineraries = json.plan?.itineraries || [];
       const parsed = itineraries.map((it) =>
         parseItinerary(it, {
-          depName: trajet.depName,
-          arrName: trajet.arrName,
+          depName,
+          arrName,
           lineFilter: trajet.line,
         }),
       );
@@ -749,8 +802,8 @@ export default function MesTrajets() {
     const data = trajetResultsMap[trajetKey] || {};
     currentTrajetRef.current = trajetKey;
     setCurrentTrajet(trajetKey);
-    setDep(trajet.depId || trajet.depName || "");
-    setArr(trajet.arrId || trajet.arrName || "");
+    setDep(trajet.depName || trajet.depId || "");
+    setArr(trajet.arrName || trajet.arrId || "");
     setLine(trajet.line || "");
     setResults(data.results || []);
     setError(data.error || "");

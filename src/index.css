@@ -14,6 +14,11 @@ body {
   font-family: var(--main-font);
 }
 
+.stop-details-card,
+.stop-details-card * {
+  font-family: var(--main-font) !important;
+}
+
 /* These overrides map the existing utility palette to a cohesive dark surface
    across pages, bottom sheets and dialogs. */
 .dark {
