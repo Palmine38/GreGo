@@ -15,6 +15,7 @@ import InfoTrafic from "./infotrafic.jsx";
 import { applyTheme, normalizeTheme } from "./hooks/useTheme.js";
 import { preloadStops } from "./hooks/useStops.js";
 import { DevOverlay } from "./components/devOverlay.jsx";
+import { Analytics } from "@vercel/analytics/react";
 import "./App.css";
 
 function DeviceGuard({ children }) {
@@ -95,6 +96,7 @@ function App() {
         />
         <Route path="/" element={<Navigate to="/mes-trajets" replace />} />
       </Routes>
+      <Analytics />
     </Router>
   );
 }
