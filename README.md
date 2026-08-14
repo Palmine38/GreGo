@@ -1,47 +1,68 @@
 [![Bannière Grego](https://image.noelshack.com/fichiers/2026/30/5/1784922257-dark-no-bg-banner.png)](https://gre-go.vercel.app/)
 
-[![React](https://img.shields.io/badge/React-18.2.4-blue.svg)](https://reactjs.org/)
-[![Vite](https://img.shields.io/badge/Vite-8.0.1-646CFF.svg)](https://vitejs.dev/)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.2.2-38B2AC.svg)](https://tailwindcss.com/)
+[![React](https://img.shields.io/badge/React-19.2.4-blue.svg)](https://reactjs.org/)
+[![Vite](https://img.shields.io/badge/Vite-8.0.0-646CFF.svg)](https://vitejs.dev/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.3.6-38B2AC.svg)](https://tailwindcss.com/)
+[![React Router](https://img.shields.io/badge/React_Router-7.13.1-CA4245.svg)](https://reactrouter.com/)
 
-> Une application web moderne faite pour Mobile pour gérer et rechercher des trajets de transport utilisant l'API mise a disposition par la TAG (Transports de l'Agglomération Grenobloise).
+> Une application web progressive et moderne optimisée (PWA) pour Mobile. Gérez et recherchez des trajets de transport utilisant l'API ouverte TAG (Transports de l'Agglomération Grenobloise) et les données en temps réel GBFS (General Bikeshare Feed Specification).
 
-## Captures d'écran de /mes-trajets/
 
-![Interface principale](.screenshots/img4.png)
+## Aperçu des fonctionnalités 
 
-## Fonctionnalités
-
-- **Gestion Multi-Trajets** : Enregistrez et gérez jusqu'à 3 trajets différents avec sauvegarde automatique et persistante
-- **Recherche de Trajets** : Recherchez des trajets de transport avec filtres par départ, arrivée et numéro de ligne
+### Trajets
+- **Gestion Multi-Trajets** : Enregistrez et gérez jusqu'à 10 trajets différents avec sauvegarde automatique et persistante
+- **Recherche de Trajets** : Recherchez des trajets de transport avec filtres avancés par départ, arrivée et numéro de ligne
 - **Stockage Persistant** : Tous les trajets sont automatiquement sauvegardés dans le localStorage du navigateur
 - **Navigation Temporelle** : Naviguez entre différents créneaux horaires pour le même trajet
-- **Données en Temps Réel** : Intégration avec l'API TAG pour des informations actualisées
-- **Recherche Rapide** : Fonctionnalité de recherche rapide pour des requêtes ponctuelles
-- **Editer nom trajets** : Vous pouvez éditer le noms de vos trajets.
-- **Support des correspondances** : Correspondances supportées.
-- **Onglet détails** : Ouverture fenêtre quand clic sur une bulle qui indique les détails de votre trajet.
-- **Exporter/importer json** : Vous pouvez exporter votre fichier de configuration des trajets, afin de retrouver vos trajets d'un appareil à l'autre
-- **Onglet settings** : Vous pouvez changer les paramètres de l'API tel que la vitesse de marche, l'accessibilité PMR, et plus.
-- **Système de cache** : Cache de 1 minute afin d'appeller moins régulièrement l'API.
-- **Refresh** : A l'aide d'un seul clic, vous pouvez rafraichir manuellement vos trajets.
-- **Icones** : icones générées par le fichier lines-icons.jsx afin de ne pas utiliser des images sous copyright de la MTAG.
+- **Édition des Trajets** : Renommez vos trajets sauvegardés pour une meilleure organisation
+- **Détails des Trajets** : Visualisez les détails complets, du tracé aux horaires exacts
+- **Refresh Manuel** : Rafraîchissez vos trajets d'un seul clic
+
+### Recherche Rapide
+- **Recherche Rapide** : Fonctionnalité de recherche rapide pour des requêtes ponctuelles sans sauvegarde
+
+
+### Données
+- **Données en Temps Réel** : Intégration avec l'API TAG pour des informations actualisées des transports
+- **Données GBFS** : Intégration des données Voi & Citiz avec localisation des stations, disponibilité, batterie restante...
+- **Alertes et Perturbations** : Affichage des perturbations actuelles du réseau de transports
+- **Export/Import JSON** : Exportez et importez vos configurations de trajets pour synchronisation multi-appareils
+
+### Paramètres
+- **Paramètres Avancés** : Vitesse de marche personnalisable, accessibilité PMR, nombre de résultats ajustable
+- **Système de Cache** : Cache intelligent de 1 minute pour réduire les appels API
+
+### Autres
+- **Icônes Dynamiques** : Icônes générées par lignes (fichier lines-icons.jsx) sans images sous copyright
+- **Carte Interactive** : Visualisation des trajets sur une carte interactive
+- **Mode Sombre** : Support du mode sombre avec persistance des préférences
+- **Analyse de Performance** : Intégration Vercel Analytics et Speed Insights
 
 ## Stack Technologique
 
-- **Frontend** : React 18
-- **Outil de Build** : Vite
-- **Styling** : Tailwind CSS
-- **Routage** : React Router v6
-- **Client HTTP** : Fetch API
-- **Source Données** : API TAG Mobilités (data.mobilites-m.fr)
+- **Frontend** : React 19 (avec React Compiler)
+- **Outil de Build** : Vite 8
+- **Styling** : Tailwind CSS 3 avec PostCSS
+- **Routage** : React Router v7
+- **Client HTTP** : Fetch API native
+- **Cartographie** : MapLibre GL avec React Map GL
+- **Icônes** : React Icons
+- **Animations** : Motion
+- **Modales** : React Modal Sheet
+- **Monitoring** : Vercel Analytics & Speed Insights
+- **Linting** : ESLint
+- **Source Données** :
+  - API TAG Mobilités (data.mobilites-m.fr)
+  - Données GBFS (Vélos en libre-service)
+  - Données de perturbations réseau
 
 ## Démarrage
 
 ### Prérequis
 
 - Node.js (v14 ou supérieur)
-- npm
+- npm ou yarn
 
 ### Installation
 
@@ -49,15 +70,13 @@
 
 ```bash
 git clone https://github.com/Palmine38/Web-TAG-express.git
-cd Web-TAG-express
+cd GreGo
 ```
 
 2. Installez les dépendances :
 
 ```bash
 npm install
-npm install motion
-npm install react-modal-sheet
 ```
 
 3. Lancez le serveur de développement :
@@ -72,108 +91,196 @@ npm run dev
 npm run build
 ```
 
+5. Aperçu du build :
+
+```bash
+npm run preview
+```
+
+### Linting
+
+```bash
+npm run lint
+```
+
 ## Structure du Projet
 
 ```
-GreGo
-├─ public
-├─ README.md
-├─ src
-│  ├─ App.css
-│  ├─ App.jsx
-│  ├─ components
-│  │  ├─ AddressSearchContent.jsx
-│  │  ├─ DisruptionItem.jsx
-│  │  ├─ JourneyCard.jsx
-│  │  ├─ JourneyDetailsSheet.jsx
-│  │  ├─ JourneyMapModal.jsx
-│  │  ├─ JourneyResultsHeader.jsx
-│  │  ├─ JourneyTimeline.jsx
-│  │  ├─ LineInfoSheet.jsx
-│  │  ├─ lines-icons.jsx
-│  │  ├─ MapSheet.jsx
-│  │  ├─ nearestStops.jsx
-│  │  ├─ SearchSheet.jsx
-│  │  ├─ StopPickerMap.jsx
-│  │  ├─ TrajetTabBar.jsx
-│  │  └─ WalkRouteSheet.jsx
-│  ├─ fast-research.jsx
-│  ├─ hooks
-│  │  ├─ useCurrentTime.js
-│  │  ├─ useDisruptions.js
-│  │  ├─ useLineColors.js
-│  │  ├─ useSettings.js
-│  │  └─ useStops.js
-│  ├─ index.css
-│  ├─ lines-icons.jsx
-│  ├─ main.jsx
-│  ├─ mes-trajets.jsx
-│  ├─ navbar.jsx
-│  ├─ nomobile.jsx
-│  ├─ settings.jsx
-│  └─ utils
-│     └─ journey.js
-└─ vercel.json
-
+GreGo/
+├── public/
+│   ├── manifest.json
+│   ├── robots.txt
+│   ├── sitemap.xml
+│   ├── GBFS/
+│   └── logos/
+├── scripts/
+│   └── postbuild.mjs
+├── src/
+│   ├── assets/
+│   ├── components/
+│   │   ├── AddressSearchContent.jsx
+│   │   ├── DisruptionItem.jsx
+│   │   ├── gbfsSheet.jsx
+│   │   ├── InfotraficSheet.jsx
+│   │   ├── JourneyCard.jsx
+│   │   ├── JourneyDetailsSheet.jsx
+│   │   ├── JourneyMapModal.jsx
+│   │   ├── JourneyResultsHeader.jsx
+│   │   ├── JourneyTimeline.jsx
+│   │   ├── LineInfoSheet.jsx
+│   │   ├── MapSheet.jsx
+│   │   ├── nearestStops.jsx
+│   │   ├── NotificationToast.jsx
+│   │   ├── SearchSheet.jsx
+│   │   ├── StopDetailsSheet.jsx
+│   │   ├── StopPickerMap.jsx
+│   │   ├── TrajetTabBar.jsx
+│   │   ├── WalkRouteSheet.jsx
+│   │   ├── devOverlay.jsx
+│   │   ├── lines-icons.jsx
+│   │   └── line*.json (tracés manuels de certaines lignes)
+│   ├── hooks/
+│   │   ├── useCurrentTime.js
+│   │   ├── useDisruptions.js
+│   │   ├── useGbfs.js
+│   │   ├── useGbfsPricing.js
+│   │   ├── useLineColors.js
+│   │   ├── usePerfSettings.js
+│   │   ├── useSettings.js
+│   │   ├── useStops.js
+│   │   └── useTheme.js
+│   ├── utils/
+│   │   ├── addressSuggestions.js
+│   │   ├── currentLocation.js
+│   │   ├── journey.js
+│   │   └── searchError.js
+│   ├── App.jsx
+│   ├── App.css
+│   ├── index.css
+│   ├── main.jsx
+│   ├── fast-research.jsx
+│   ├── infotrafic.jsx
+│   ├── lines-icons.jsx
+│   ├── mes-trajets.jsx
+│   ├── navbar.jsx
+│   ├── nomobile.jsx
+│   ├── settings.jsx
+│   └── suivi-beta.jsx
+├── eslint.config.js
+├── index.html
+├── package.json
+├── postcss.config.js
+├── tailwind.config.js
+├── vite.config.js
+├── vercel.json
+└── README.md
 ```
-
 
 ## Composants Principaux
 
-### Mes Trajets (fichier _mestrajets.jsx_)
+### Mes Trajets (`mes-trajets.jsx`)
 
-- Gérez jusqu'à 3 trajets sauvegardés
-- Visualisez et modifiez les détails des trajets (départ, arrivée, ligne)
-- Sauvegarde automatique avec retour visuel
-- Persistance des données entre les sessions
+- Gérez jusqu'à 10 trajets de manière intuitive grâce à un appui long : supprimez, deplacez, renommez vos trajets.
+- Modifiez et paufinez les détails des trajets (départ, arrivée, ligne)
+- Cherchez en utilisant la carte interactive pour sélectionner des arrêts/adresses.
+- Accédez à l'infotrafic en 1 clic.
+- Sauvegarde automatique et persistante
+- Précision record sur le calcul d'itinéraires.
 
-### Recherche Rapide (fichier _fast-research.jsx_)
+### Recherche Rapide (`fast-research.jsx`)
 
-- Recherche ponctuelle sans sauvegarde
-- Mêmes capacités de recherche que les trajets sauvegardés
-- Affichage rapide des résultats
+- Recherche rapide & ponctuelle 
+- Carte interactive avec plusieurs thèmes
+- Affichage instantanée des résultats
+- Filtres Voi & Citiz optimisés
+- Détails d'un arrêt précis : lignes, prochains passages, tracés de lignes...
 
-### Barre de Navigation (fichier _navbar.jsx_)
+### Infotrafic (`infotrafic.jsx`)
 
-- Navigation entre les pages
+- Affichage des perturbations et alertes du réseau aussi bien que Grenoble que le Pays Voironnais, voir le Grésivaudan.
+- Détails des perturbations par ligne
+
+### Barre de Navigation (`navbar.jsx`)
+
+- Navigation entre les pages principales
 - Menu hamburger pour mobile
-- Design responsive
+- Design responsive et optimisé tactile
+- Bouton infotrafic : accedez aux informations en 1 clic
+- Barre de navigation en bas style application native : rend l'expérience utilisateur plus fluide et plus agréable
 
-### Settings (fichier *settings.jsx*t)
+### Paramètres (`settings.jsx`)
 
-- Accessibilité PMR
-- Vitesse de marche
-- Nombre de trajets retournés
+- **Accessibilité PMR** : Options pour trajets accessibles
+- **Vitesse de marche** : Ajustez votre vitesse de marche
+- **Nombre de trajets** : Contrôlez le nombre de résultats retournés
+- **Persistance** : Tous les paramètres sont sauvegardés localement
 
-### Lines Icons (fichier _lines-icons.jsx_)
+### Icônes Dynamiques (`lines-icons.jsx`)
 
-- Récupère couleur de lignes et génère icones.
+- Génère les icônes des lignes de transport
+- Récupère et applique les couleurs officielles
+- Évite l'utilisation d'images sous copyright
+
+### Composants de Feuilles/Sheets
+
+- **JourneyDetailsSheet** : Détails complets du trajet : carte, tracés...
+- **JourneyMapModal** : Visualisation cartographique
+- **StopDetailsSheet** : Informations détaillées sur les arrêts
+- **MapSheet** : Carte interactive
+- **SearchSheet** : Interface de recherche d'adresses
+- **LineInfoSheet** : Informations sur les lignes
+- **InfotraficSheet** : Perturbations et alertes
+- **gbfsSheet** : Données concernant l'accès des vélos/trotinettes et l'autopartage des voitures (Voi & Citiz)
+
+## Hooks Personnalisés
+
+L'application utilise plusieurs hooks React personnalisés pour la gestion d'état et les données :
+
+- **useStops()** : Récupère et met en cache les arrêts de transport
+- **useLineColors()** : Gère les couleurs des lignes de transport
+- **useSettings()** : Gère les paramètres utilisateur persistants
+- **useDisruptions()** : Récupère les perturbations du réseau en temps réel
+- **useGbfs()** : Gère les données GBFS (Vélos en libre-service)
+- **useGbfsPricing()** : Récupère les tarifs GBFS
+- **useCurrentTime()** : Fournit l'heure actuelle avec mise à jour
+- **useTheme()** : Gère le thème (mode clair/sombre/bleu)
+- **usePerfSettings()** : Configuration des paramètres de performance
+
+## Utilitaires */utils/*
+
+- **addressSuggestions.js** : Autocomplétion et suggestions d'adresses
+- **currentLocation.js** : Géolocalisation et détection de position
+- **journey.js** : Logique de gestion et traitement des trajets
+- **searchError.js** : Gestion et affichage des erreurs de recherche
 
 ## Intégration API
 
-L'application utilise l'API ouverte TAG Mobilités :
+### TAG Mobilités
+
+L'application utilise l'API ouverte TAG Mobilités (SMMAG) pour les trajets de transport :
 
 - **URL de Base** : `https://data.mobilites-m.fr/api/routers/default`
 - Récupère les trajets disponibles, arrêts et itinéraires
 - Données de transport en temps réel
+- Perturbations et alertes réseau
 
-## Fonctionnalités en Détail
+### GBFS (General Bikeshare Feed Specification)
 
-### Sauvegarde de Trajets
+Intégration des données de vélos en libre-service :
 
-- Enregistrez les préférences de départ, arrivée et ligne
-- Restauration automatique au rechargement de la page
-- Boutons avec codes couleur pour trajets sauvegardés/non-sauvegardés
+- Localisation des stations Vélo'v
+- Disponibilité en temps réel des vélos et places de parking
+- Informations tarifaires
 
-### Filtrage de Recherche
+## Performance et Optimisations
 
-- Filtrez par ligne spécifique _(falcutatif)_
+- **Cache Intelligent** : Mise en cache de 1 minute pour réduire les appels API
+- **Lazy Loading** : Chargement différé des composants volumineux
+- **React Compiler** : Compilation automatique des composants pour plus de performances
 
-### Gestion d'État
+## Déploiement
 
-- Hooks React pour la gestion d'état
-- localStorage pour la persistance
-- Cache séparé pour les résultats de recherche par trajet
+L'application est déployée sur **Vercel** (https://gre-go.vercel.app).
 
 ## Compatibilité Navigateurs
 
@@ -182,19 +289,40 @@ L'application utilise l'API ouverte TAG Mobilités :
 - Safari (dernière version)
 - Edge (dernière version)
 
+Responsive design optimisé pour tous les appareils
+
 ## Licence
 
 Ce projet est open source et disponible sous la licence GNU GPL v3.
 
+Voir [LICENSE](LICENSE) pour plus de détails.
+
 ## Crédits
 
-Ce projet ne serait pas possible sans les APIs opendata fournies par MRéso.
+Ce projet ne serait pas possible sans :
+
+- Les APIs opendata fournies par le **SMMAG**
 
 ## Auteur
 
-Créé par [Palmine38](https://github.com/Palmine38) avec la contribution du créateur de Grelines, [Antquu](https://github.com/antquu)
+Créé par [Palmine38](https://github.com/Palmine38) avec la contribution de [Antquu](https://github.com/antquu).
 
 ## Contribution
 
-Les contributions sont les bienvenues ! N'hésitez pas à soumettre des pull requests ou ouvrir des issues pour les bugs et demandes de fonctionnalités.
+Les contributions sont les bienvenues ! N'hésitez pas à :
 
+1. Fork le projet
+2. Créer une branche pour votre fonctionnalité (`git checkout -b feature/NouvelleFeature`)
+3. Commit vos changements (`git commit -m 'Ajout de NouvelleFeature'`)
+4. Push vers la branche (`git push origin feature/NouvelleFeature`)
+5. Ouvrir une Pull Request
+
+Les issues et demandes de fonctionnalités sont également bienvenues :)
+
+## Ressources
+
+- [Documentation Vite](https://vitejs.dev/)
+- [Documentation React](https://react.dev/)
+- [Documentation Tailwind CSS](https://tailwindcss.com/)
+- [API TAG Mobilités](https://data.mobilites-m.fr/)
+- [MapLibre GL](https://maplibre.org/)
