@@ -4,6 +4,10 @@ import {
   CURRENT_LOCATION_VALUE,
   isCurrentLocationValue,
 } from "../utils/currentLocation.js";
+import { LiaExchangeAltSolid } from "react-icons/lia";
+import { useTheme, THEMES } from "../hooks/useTheme.js";
+import { GrPowerReset } from "react-icons/gr";
+import { BsBoxArrowInLeft } from "react-icons/bs";
 
 /**
  * Panneau de recherche partagé entre FastResearch et MesTrajets.
@@ -28,6 +32,7 @@ import {
  */
 export function SearchForm({
   title = "Recherche",
+  onRename,
   dep,
   arr,
   depDisplay,
@@ -46,6 +51,7 @@ export function SearchForm({
   arrAddressSuggestions = [],
   onSelectSuggestion,
   onSearch,
+  onSwapAndSearch,
   onReset,
   onCancel,
   loading,
@@ -77,10 +83,34 @@ export function SearchForm({
     nextDate.setFullYear(year, month - 1, day);
     setSearchDate(nextDate);
   };
+
+  const theme = useTheme();
+
   return (
     <div className="px-4 pt-4 pb-10">
       <div className="flex justify-between items-center mb-4">
-        <span className="font-bold text-lg">{title}</span>
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-lg">{title}</span>
+          {onRename && (
+            <button
+              type="button"
+              onClick={onRename}
+              aria-label="Renommer le trajet"
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 20 20"
+                fill="currentColor"
+                className="shrink-0 size-5"
+                aria-hidden="true"
+              >
+                <path d="m5.433 13.917 1.262-3.155A4 4 0 0 1 7.58 9.42l6.92-6.918a2.121 2.121 0 0 1 3 3l-6.92 6.918c-.383.383-.84.685-1.343.886l-3.154 1.262a.5.5 0 0 1-.65-.65Z" />
+                <path d="M3.5 5.75c0-.69.56-1.25 1.25-1.25H10A.75.75 0 0 0 10 3H4.75A2.75 2.75 0 0 0 2 5.75v9.5A2.75 2.75 0 0 0 4.75 18h9.5A2.75 2.75 0 0 0 17 15.25V10a.75.75 0 0 0-1.5 0v5.25c0 .69-.56 1.25-1.25 1.25h-9.5c-.69 0-1.25-.56-1.25-1.25v-9.5Z" />
+              </svg>
+            </button>
+          )}
+        </div>
         <button
           className="text-slate-400 hover:text-slate-700"
           onClick={onCancel}
@@ -249,6 +279,19 @@ export function SearchForm({
               </ul>
             )}
         </div>
+        {!depUsesCurrentLocation && (
+          <div className="relative h-0 overflow-visible col-span-full sm:col-span-1 sm:col-start-1">
+            <button
+              type="button"
+              onClick={onSwapAndSearch}
+              aria-label="Inverser départ et arrivée et rechercher"
+              title="Inverser départ et arrivée et rechercher"
+              className="absolute left-1/2 top-2.5 -translate-x-1/2 -translate-y-1/2 z-30 rounded-full p-1 text-gray-500"
+            >
+              <LiaExchangeAltSolid className="size-5 rotate-90" />
+            </button>
+          </div>
+        )}
 
         {/* Arrivée */}
         <div className="space-y-1 relative">
@@ -378,7 +421,7 @@ export function SearchForm({
         <button
           onClick={onSearch}
           disabled={loading || !stopsLoaded}
-          className="w-full px-4 py-3 bg-blue-600 text-white rounded-xl font-semibold disabled:opacity-60"
+          className="w-full px-4 py-3 bg-blue-600 text-white rounded-xl font-semibold disabled:opacity-60 mb-1"
         >
           {!stopsLoaded
             ? "Chargement des arrêts..."
@@ -386,21 +429,26 @@ export function SearchForm({
               ? "Recherche..."
               : "Rechercher"}
         </button>
-        <button
-          onClick={onReset}
-          className="w-full px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold"
-        >
-          Réinitialiser
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={onReset}
+            aria-label="Réinitialiser"
+            title="Réinitialiser"
+            className="flex-1 flex items-center justify-center px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold"
+          >
+            <GrPowerReset className="size-5" />
+          </button>
+          <button
+            onClick={onCancel}
+            type="button"
+            aria-label="Annuler"
+            title="Annuler"
+            className="flex-1 flex items-center justify-center px-4 py-3 bg-gray-100 text-gray-700 rounded-xl font-semibold"
+          >
+            <BsBoxArrowInLeft className="size-5" />
+          </button>
+        </div>
       </div>
-
-      <button
-        onClick={onCancel}
-        type="button"
-        className="mt-3 w-full text-center text-gray-500 text-sm"
-      >
-        Annuler
-      </button>
     </div>
   );
 }

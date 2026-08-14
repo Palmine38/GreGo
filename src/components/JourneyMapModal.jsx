@@ -13,6 +13,8 @@ const MAPTILER_STYLE_URL_LIGHT =
   "https://api.maptiler.com/maps/019d0d02-359b-7f4b-a797-bdeabca9dce3/style.json?key=7TQErbyvEqFlis3QMmSl";
 const MAPTILER_STYLE_URL_DARK =
   "https://api.maptiler.com/maps/019f7c73-0431-726f-ae5d-598a16a06771/style.json?key=7TQErbyvEqFlis3QMmSl";
+const MAPTILER_STYLE_URL_DARK_BLUE =
+  "https://api.maptiler.com/maps/01a00098-f343-7789-990e-687ae5296acd/style.json?key=7TQErbyvEqFlis3QMmSl";
 
 function decodePolyline(encoded) {
   let index = 0,
@@ -91,7 +93,11 @@ export function JourneyMapModal({ journey, lineColors, onClose }) {
   const mapRef = useRef(null);
   const theme = useTheme();
   const mapStyle =
-    theme !== "light" ? MAPTILER_STYLE_URL_DARK : MAPTILER_STYLE_URL_LIGHT;
+    theme === "dark"
+      ? MAPTILER_STYLE_URL_DARK_BLUE
+      : theme === "gray"
+        ? MAPTILER_STYLE_URL_DARK
+        : MAPTILER_STYLE_URL_LIGHT;
   const [visible, setVisible] = useState(false);
   const [zoom, setZoom] = useState(13);
   const [iconsReady, setIconsReady] = useState(false);
@@ -202,10 +208,10 @@ export function JourneyMapModal({ journey, lineColors, onClose }) {
     return [...(leg.intermediateStops || []), leg.to]
       .filter((stop) => stop?.lon && stop?.lat)
       .map((s) => ({
-      lon: s.lon,
-      lat: s.lat,
-      name: s.name,
-      color,
+        lon: s.lon,
+        lat: s.lat,
+        name: s.name,
+        color,
       }));
   });
 
@@ -362,24 +368,24 @@ export function JourneyMapModal({ journey, lineColors, onClose }) {
             ))}
 
             {allTransitStops.map((m, i) => (
-                <Marker
-                  key={`stop-${i}`}
-                  longitude={m.lon}
-                  latitude={m.lat}
-                  anchor="center"
-                >
-                  <div
-                    title={m.name}
-                    style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      backgroundColor: "white",
-                      border: `2px solid ${m.color}`,
-                      boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
-                    }}
-                  />
-                </Marker>
+              <Marker
+                key={`stop-${i}`}
+                longitude={m.lon}
+                latitude={m.lat}
+                anchor="center"
+              >
+                <div
+                  title={m.name}
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: "50%",
+                    backgroundColor: "white",
+                    border: `2px solid ${m.color}`,
+                    boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
+                  }}
+                />
+              </Marker>
             ))}
 
             {/* ── Marqueurs de correspondance (toujours visibles) ───── */}

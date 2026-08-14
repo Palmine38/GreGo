@@ -49,7 +49,9 @@ const DEFAULT_TRAJET = {
   depName: "",
   arrName: "",
 };
-const TRAJET_KEYS = ["T1", "T2", "T3"];
+const TRAJET_KEYS = Array.from({ length: 10 }, (_, i) => `T${i + 1}`);
+const MAX_TRAJETS = TRAJET_KEYS.length;
+const TRAJET_ORDER_STORAGE_KEY = "tag-express-trajet-order";
 
 const formatTimeInputValue = (date = new Date()) =>
   `${String(date.getHours()).padStart(2, "0")}:${String(
@@ -151,11 +153,9 @@ export default function MesTrajets() {
   }, [stopsLoaded]);
 
   // ── Trajets persistés ─────────────────────────────────────────────────────
-  const [trajets, setTrajets] = useState({
-    T1: { ...DEFAULT_TRAJET },
-    T2: { ...DEFAULT_TRAJET },
-    T3: { ...DEFAULT_TRAJET },
-  });
+  const [trajets, setTrajets] = useState(() =>
+    Object.fromEntries(TRAJET_KEYS.map((t) => [t, { ...DEFAULT_TRAJET }])),
+  );
   const [currentTrajet, setCurrentTrajet] = useState("T1");
   const [loadedFromStorage, setLoadedFromStorage] = useState(false);
   const hasLoadedRef = useRef(false);
@@ -230,13 +230,38 @@ export default function MesTrajets() {
   }, [arr, stopsMap]);
 
   // ── Résultats par trajet ───────────────────────────────────────────────────
-  const [trajetResultsMap, setTrajetResultsMap] = useState({
-    T1: { results: [], error: "", timeOffset: 0, searchBaseDate: new Date() },
-    T2: { results: [], error: "", timeOffset: 0, searchBaseDate: new Date() },
-    T3: { results: [], error: "", timeOffset: 0, searchBaseDate: new Date() },
-  });
+  const [trajetResultsMap, setTrajetResultsMap] = useState(() =>
+    Object.fromEntries(
+      TRAJET_KEYS.map((t) => [
+        t,
+        { results: [], error: "", timeOffset: 0, searchBaseDate: new Date() },
+      ]),
+    ),
+  );
   const trajetsCacheRef = useRef({});
   const trajetsCacheTimestampRef = useRef({});
+
+  // ── Ordre des trajets (pour le sélecteur avec scroll + réorganisation) ────
+  const [trajetOrder, setTrajetOrder] = useState(() => {
+    try {
+      const saved = JSON.parse(
+        localStorage.getItem(TRAJET_ORDER_STORAGE_KEY) || "null",
+      );
+      if (Array.isArray(saved)) {
+        const filtered = saved.filter((k) => TRAJET_KEYS.includes(k));
+        const missing = TRAJET_KEYS.filter((k) => !filtered.includes(k));
+        return [...filtered, ...missing];
+      }
+    } catch (e) {
+      console.error("Erreur chargement ordre des trajets:", e);
+    }
+    return [...TRAJET_KEYS];
+  });
+  useEffect(() => {
+    localStorage.setItem(TRAJET_ORDER_STORAGE_KEY, JSON.stringify(trajetOrder));
+  }, [trajetOrder]);
+  const isConfigured = (t) => !!(trajets[t]?.depName && trajets[t]?.arrName);
+  const configuredTrajetKeys = trajetOrder.filter(isConfigured);
 
   // ── UI panels ─────────────────────────────────────────────────────────────
   const [inputsOpen, setInputsOpen] = useState(false);
@@ -355,8 +380,16 @@ export default function MesTrajets() {
           setCurrentTrajet(activeKey);
           currentTrajetRef.current = activeKey;
           const stored = parsed[activeKey];
-          setDep(stored.depName || stored.depId || "");
-          setArr(stored.arrName || stored.arrId || "");
+          setDep(
+            isCurrentLocationValue(stored.depId)
+              ? CURRENT_LOCATION_VALUE
+              : stored.depName || stored.depId || "",
+          );
+          setArr(
+            isCurrentLocationValue(stored.arrId)
+              ? CURRENT_LOCATION_VALUE
+              : stored.arrName || stored.arrId || "",
+          );
           setLine(stored.line || "");
         }
       } catch (e) {
@@ -477,13 +510,26 @@ export default function MesTrajets() {
       }
       return null;
     };
-    const depPosition = findStopPosition(trajet.depId);
+
+    let fromCoords, depName;
+    if (isCurrentLocationValue(trajet.depId)) {
+      try {
+        const current = await getCurrentLocationCoords();
+        fromCoords = `${current.lat},${current.lon}`;
+        depName = CURRENT_LOCATION_LABEL;
+      } catch (err) {
+        console.error("searchById: position indisponible", err);
+        return; // pas de position dispo, on annule cette recherche
+      }
+    }
+
+    const depPosition = fromCoords ? null : findStopPosition(trajet.depId);
     const arrPosition = findStopPosition(trajet.arrId);
-    const depId = depPosition?.id || trajet.depId;
+    const depId = fromCoords ? trajet.depId : depPosition?.id || trajet.depId;
     const arrId = arrPosition?.id || trajet.arrId;
     if (!depId || !arrId) return;
 
-    const depName = depPosition?.name || trajet.depName || trajet.depId;
+    depName = depName || depPosition?.name || trajet.depName || trajet.depId;
     const arrName = arrPosition?.name || trajet.arrName || trajet.arrId;
 
     if (stopsLoaded) {
@@ -518,9 +564,11 @@ export default function MesTrajets() {
     );
     const now = new Date();
     const urlParams = buildOtpParams({
-      fromCoords: depPosition
-        ? otpPlaceParam(depPosition)
-        : depId.split("::")[1] || depId,
+      fromCoords:
+        fromCoords ||
+        (depPosition
+          ? otpPlaceParam(depPosition)
+          : depId.split("::")[1] || depId),
       toCoords: arrPosition
         ? otpPlaceParam(arrPosition)
         : arrId.split("::")[1] || arrId,
@@ -802,8 +850,16 @@ export default function MesTrajets() {
     const data = trajetResultsMap[trajetKey] || {};
     currentTrajetRef.current = trajetKey;
     setCurrentTrajet(trajetKey);
-    setDep(trajet.depName || trajet.depId || "");
-    setArr(trajet.arrName || trajet.arrId || "");
+    setDep(
+      isCurrentLocationValue(trajet.depId)
+        ? CURRENT_LOCATION_VALUE
+        : trajet.depName || trajet.depId || "",
+    );
+    setArr(
+      isCurrentLocationValue(trajet.arrId)
+        ? CURRENT_LOCATION_VALUE
+        : trajet.arrName || trajet.arrId || "",
+    );
     setLine(trajet.line || "");
     setResults(data.results || []);
     setError(data.error || "");
@@ -822,6 +878,28 @@ export default function MesTrajets() {
     );
     setInputsOpen(false);
     localStorage.setItem("tag-express-active-trajet", trajetKey);
+  };
+
+  const handleAddTrajet = () => {
+    if (configuredTrajetKeys.length >= MAX_TRAJETS) return;
+    const nextKey = trajetOrder.find((t) => !isConfigured(t));
+    if (!nextKey) return;
+    currentTrajetRef.current = nextKey;
+    setCurrentTrajet(nextKey);
+    setDep("");
+    setArr("");
+    setLine("");
+    setResults([]);
+    setError("");
+    setTimeOffset(0);
+    setSearchBaseDate(new Date());
+    setSearchTime("");
+    setDepartureTime("");
+    setArrivalTime("");
+    setSelectedJourney(null);
+    setJourneyDetailsOpen(false);
+    localStorage.setItem("tag-express-active-trajet", nextKey);
+    openInputs();
   };
 
   const reset = () => {
@@ -889,6 +967,331 @@ export default function MesTrajets() {
     setTimeout(() => setSelectedLineInfo(null), 300);
   };
 
+  // ── Sélecteur de trajets : scroll horizontal + réorganisation par appui long ──
+  // On gère nous-mêmes le scroll horizontal (au lieu de laisser le navigateur
+  // le faire) pour éviter tout conflit entre "je scrolle" et "je fais un appui
+  // long pour réorganiser" : les deux gestes partent d'un pointerdown sur le
+  // même bouton, donc c'est nous qui devons trancher.
+  //
+  // Pendant la réorganisation, le bouton saisi reste toujours monté dans le DOM
+  // (juste estompé) pour ne jamais perdre le pointer capture / les handlers en
+  // cours de geste. Un clone flottant (position fixed) suit le doigt, et un
+  // repère "||" apparaît entre les boutons pour indiquer où le trajet sera
+  // inséré au relâchement.
+  const LONG_PRESS_MS = 450;
+  const SCROLL_START_THRESHOLD = 6; // px de mouvement avant la fin de l'appui long = c'est un scroll
+
+  const trajetScrollRef = useRef(null);
+  const trajetButtonRefs = useRef({});
+  const longPressTimerRef = useRef(null);
+  // mode: "pending" (on ne sait pas encore) | "scrolling" | "dragging"
+  const dragStateRef = useRef(null);
+  const wasDraggingRef = useRef(false);
+  const [draggingTrajetKey, setDraggingTrajetKey] = useState(null);
+  const [dragTranslate, setDragTranslate] = useState({ x: 0, y: 0 });
+  const [dragTargetIndex, setDragTargetIndex] = useState(null);
+  const [dragStartRect, setDragStartRect] = useState(null);
+  const [isOverTrash, setIsOverTrash] = useState(false);
+  const [deletingTrajetKey, setDeletingTrajetKey] = useState(null);
+  const trashZoneRef = useRef(null);
+  const [trashDockMounted, setTrashDockMounted] = useState(false);
+  const [trashDockVisible, setTrashDockVisible] = useState(false);
+
+  useEffect(() => {
+    if (draggingTrajetKey) {
+      setTrashDockMounted(true);
+      // deux rAF pour être sûr que le navigateur a bien peint l'état initial
+      // (dock caché) avant de basculer vers l'état visible → la transition CSS
+      // s'applique correctement au lieu d'apparaître d'un coup.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setTrashDockVisible(true));
+      });
+    } else {
+      setTrashDockVisible(false);
+      const timer = setTimeout(() => setTrashDockMounted(false), 260);
+      return () => clearTimeout(timer);
+    }
+  }, [draggingTrajetKey]);
+
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  const deleteTrajet = (trajetKey) => {
+    const configuredCount = TRAJET_KEYS.filter((k) => isConfigured(k)).length;
+    if (configuredCount <= 1 && isConfigured(trajetKey)) {
+      setError("Vous devez garder au moins un trajet.");
+      return;
+    }
+    const updated = {
+      ...trajetsRef.current,
+      [trajetKey]: { ...DEFAULT_TRAJET },
+    };
+    setTrajets(updated);
+    trajetsRef.current = updated;
+    localStorage.setItem("tag-express-trajets", JSON.stringify(updated));
+    trajetsCacheRef.current[trajetKey] = null;
+    trajetsCacheTimestampRef.current[trajetKey] = null;
+    setTrajetResultsMap((prev) => ({
+      ...prev,
+      [trajetKey]: {
+        results: [],
+        error: "",
+        timeOffset: 0,
+        searchBaseDate: new Date(),
+      },
+    }));
+
+    if (trajetKey === currentTrajetRef.current) {
+      const remaining = TRAJET_KEYS.filter(
+        (k) => k !== trajetKey && updated[k]?.depName && updated[k]?.arrName,
+      );
+      const nextKey = remaining[0];
+      if (nextKey) {
+        const nextTrajet = updated[nextKey];
+        const nextData = trajetResultsMap[nextKey] || {};
+        currentTrajetRef.current = nextKey;
+        setCurrentTrajet(nextKey);
+        setDep(nextTrajet.depName || nextTrajet.depId || "");
+        setArr(nextTrajet.arrName || nextTrajet.arrId || "");
+        setLine(nextTrajet.line || "");
+        setResults(nextData.results || []);
+        setError(nextData.error || "");
+        setTimeOffset(nextData.timeOffset || 0);
+        setSearchBaseDate(nextData.searchBaseDate || new Date());
+        localStorage.setItem("tag-express-active-trajet", nextKey);
+      } else {
+        currentTrajetRef.current = "T1";
+        setCurrentTrajet("T1");
+        setDep("");
+        setArr("");
+        setLine("");
+        setResults([]);
+        setError("");
+        setTimeOffset(0);
+        setSearchBaseDate(new Date());
+        localStorage.setItem("tag-express-active-trajet", "T1");
+      }
+    }
+  };
+
+  const triggerDeleteAnimation = (trajetKey) => {
+    if (navigator.vibrate) navigator.vibrate(30);
+    setDeletingTrajetKey(trajetKey);
+    setTimeout(() => {
+      deleteTrajet(trajetKey);
+      setDraggingTrajetKey(null);
+      setDragTranslate({ x: 0, y: 0 });
+      setDragTargetIndex(null);
+      setDragStartRect(null);
+      setDeletingTrajetKey(null);
+    }, 260);
+  };
+
+  // Insère `draggedKey` juste avant le `targetIndex`-ième élément de
+  // `visibleKeys` (la liste des trajets configurés SANS le trajet saisi).
+  // targetIndex === visibleKeys.length signifie "à la toute fin".
+  const applyTrajetReorder = (draggedKey, targetIndex, visibleKeys) => {
+    if (targetIndex == null) return;
+    setTrajetOrder((prev) => {
+      const withoutDragged = prev.filter((k) => k !== draggedKey);
+      let insertAt;
+      if (targetIndex >= visibleKeys.length) {
+        const lastKey = visibleKeys[visibleKeys.length - 1];
+        insertAt = lastKey
+          ? withoutDragged.indexOf(lastKey) + 1
+          : withoutDragged.length;
+      } else {
+        const anchorKey = visibleKeys[targetIndex];
+        insertAt = withoutDragged.indexOf(anchorKey);
+        if (insertAt === -1) insertAt = withoutDragged.length;
+      }
+      const next = [...withoutDragged];
+      next.splice(insertAt, 0, draggedKey);
+      return next;
+    });
+  };
+
+  const endTrajetGesture = () => {
+    const state = dragStateRef.current;
+    if (state?.mode === "dragging") {
+      wasDraggingRef.current = true;
+      if (isOverTrash) {
+        clearLongPressTimer();
+        dragStateRef.current = null;
+        setIsOverTrash(false);
+        if (configuredTrajetKeys.length <= 1) {
+          setError("Vous devez garder au moins un trajet.");
+          // pas de suppression : on laisse le nettoyage commun ci-dessous
+          // remettre la carte en place normalement.
+        } else {
+          triggerDeleteAnimation(state.key);
+          return;
+        }
+      }
+      const visibleKeys = configuredTrajetKeys.filter((k) => k !== state.key);
+      applyTrajetReorder(state.key, dragTargetIndex, visibleKeys);
+    }
+    clearLongPressTimer();
+    dragStateRef.current = null;
+    setDraggingTrajetKey(null);
+    setDragTranslate({ x: 0, y: 0 });
+    setDragTargetIndex(null);
+    setDragStartRect(null);
+    setIsOverTrash(false);
+  };
+
+  const handleTrajetPointerDown = (e, key) => {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    clearLongPressTimer();
+    dragStateRef.current = {
+      key,
+      startX: e.clientX,
+      startY: e.clientY,
+      startScrollLeft: trajetScrollRef.current?.scrollLeft || 0,
+      mode: "pending",
+    };
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch (err) {
+      // ignore si non supporté
+    }
+    longPressTimerRef.current = setTimeout(() => {
+      const state = dragStateRef.current;
+      if (!state || state.key !== key || state.mode !== "pending") return;
+      state.mode = "dragging";
+      const el = trajetButtonRefs.current[key];
+      const rect = el ? el.getBoundingClientRect() : null;
+      state.startRect = rect;
+      setDragStartRect(rect);
+      setDraggingTrajetKey(key);
+      // Au moment de la saisie, le repère d'insertion démarre à la position
+      // actuelle du bouton (nombre de trajets configurés qui le précèdent).
+      setDragTargetIndex(configuredTrajetKeys.indexOf(key));
+      if (navigator.vibrate) navigator.vibrate(15);
+    }, LONG_PRESS_MS);
+  };
+
+  const handleTrajetPointerMove = (e) => {
+    const state = dragStateRef.current;
+    if (!state) return;
+    const deltaX = e.clientX - state.startX;
+    const deltaY = e.clientY - state.startY;
+
+    if (state.mode === "pending") {
+      if (Math.hypot(deltaX, deltaY) > SCROLL_START_THRESHOLD) {
+        // On bouge avant la fin de l'appui long : c'est un scroll, pas une réorganisation.
+        clearLongPressTimer();
+        state.mode = "scrolling";
+      } else {
+        return;
+      }
+    }
+
+    if (state.mode === "scrolling") {
+      if (trajetScrollRef.current) {
+        trajetScrollRef.current.scrollLeft = state.startScrollLeft - deltaX;
+      }
+      return;
+    }
+
+    // state.mode === "dragging" : le clone flottant suit le pointeur, et on
+    // recalcule entre quels boutons il se trouve pour placer le repère "||".
+    e.preventDefault?.();
+    setDragTranslate({ x: deltaX, y: deltaY });
+    if (!state.startRect) return;
+
+    const cloneCenterX =
+      state.startRect.left + state.startRect.width / 2 + deltaX;
+    const visibleKeys = configuredTrajetKeys.filter((k) => k !== state.key);
+    let newIndex = visibleKeys.length;
+    for (let i = 0; i < visibleKeys.length; i++) {
+      const el = trajetButtonRefs.current[visibleKeys[i]];
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      if (cloneCenterX < centerX) {
+        newIndex = i;
+        break;
+      }
+    }
+    setDragTargetIndex(newIndex);
+    // Détection du survol de la corbeille : distance entre le centre du
+    // clone flottant et le centre de la zone de la corbeille.
+    let nowOverTrash = false;
+    if (trashZoneRef.current) {
+      const trashRect = trashZoneRef.current.getBoundingClientRect();
+      const cloneCenterY =
+        state.startRect.top + state.startRect.height / 2 + deltaY;
+      const trashCenterX = trashRect.left + trashRect.width / 2;
+      const trashCenterY = trashRect.top + trashRect.height / 2;
+      const distance = Math.hypot(
+        cloneCenterX - trashCenterX,
+        cloneCenterY - trashCenterY,
+      );
+      nowOverTrash =
+        cloneCenterX >= trashRect.left &&
+        cloneCenterX <= trashRect.right &&
+        cloneCenterY >= trashRect.top + 20;
+    }
+    setIsOverTrash(nowOverTrash);
+  };
+
+  const handleTrajetPointerUp = () => {
+    endTrajetGesture();
+  };
+
+  const handleTrajetClick = (t) => {
+    if (wasDraggingRef.current) {
+      wasDraggingRef.current = false;
+      return;
+    }
+    loadTrajet(t);
+  };
+
+  // ── Couleur d'ombre du bouton en cours de réorganisation, selon le thème ──
+  const dragShadowColor =
+    theme === "gray"
+      ? "#252526"
+      : theme === "dark"
+        ? "#182235"
+        : "rgba(15, 23, 42, 0.25)";
+
+  const trashIdleColor =
+    theme === "gray" ? "#3a3a3a" : theme === "dark" ? "#334155" : "#9ca3af";
+  const trashActiveColor =
+    theme === "gray" || theme === "dark" ? "#ef4444" : "#dc2626";
+  const trashShadowColor =
+    theme === "gray"
+      ? "rgba(0,0,0,0.5)"
+      : theme === "dark"
+        ? "rgba(0,0,0,0.5)"
+        : "rgba(0,0,0,0.35)";
+
+  // Petit repère "||" affiché entre deux boutons pendant le drag, pour
+  // indiquer où le trajet saisi sera inséré si on relâche ici.
+  const renderInsertSlot = (idx) => {
+    const active = dragTargetIndex === idx;
+    return (
+      <div
+        key={`slot-${idx}`}
+        className="flex-none flex items-center justify-center"
+        style={{ width: active ? 18 : 8, transition: "width 120ms ease" }}
+      >
+        <span
+          className="flex gap-[3px] transition-opacity duration-150"
+          style={{ opacity: active ? 1 : 0, height: 34 }}
+        >
+          <span className="w-[3px] h-full rounded-full bg-blue-500" />
+          <span className="w-[3px] h-full rounded-full bg-blue-500" />
+        </span>
+      </div>
+    );
+  };
+
   // ── Pagination temporelle ─────────────────────────────────────────────────
   const origin = new Date(
     (searchBaseDate || new Date()).getTime() + timeOffset * 60 * 60 * 1000,
@@ -896,7 +1299,6 @@ export default function MesTrajets() {
   const afterDate = new Date(origin.getTime() + 30 * 60 * 1000);
   const afterLabel = `après ${afterDate.toTimeString().slice(0, 5)}`;
 
-  const isConfigured = (t) => !!(trajets[t]?.depName && trajets[t]?.arrName);
   const resultSearchTime = new Date(
     searchBaseDate.getTime() + timeOffset * 60 * 60 * 1000,
   );
@@ -950,56 +1352,292 @@ export default function MesTrajets() {
         }}
       />
 
+      {/* ── Voile d'arrière-plan pendant la réorganisation ─────────────── */}
+      {draggingTrajetKey && (
+        <div
+          className="fixed inset-0 z-[9990] bg-black/65 transition-opacity duration-200"
+          style={{ pointerEvents: "none" }}
+          aria-hidden="true"
+        />
+      )}
+
       <div className="min-h-screen relative bg-[#F8FAFC] pb-28">
         {/* ── Sélecteur de trajets ────────────────────────────────────── */}
-        <div className="bg-white border-b-2 border-gray-200 px-4 pt-4 pb-4">
-          <div className="flex gap-3">
-            {TRAJET_KEYS.map((t) => {
-              const trajetName = trajets[t]?.name || t;
-              const isTruncated = trajetName.length > 8;
-              return (
+        <div
+          className="px-4 pt-4 pb-4"
+          style={{
+            position: "relative",
+            zIndex: draggingTrajetKey ? 9995 : "auto",
+            backgroundColor:
+              theme === "dark"
+                ? "#1e293b"
+                : theme === "gray"
+                  ? "#252526"
+                  : "#ffffff",
+            borderBottom: `2px solid ${
+              theme === "dark"
+                ? "#334155"
+                : theme === "gray"
+                  ? "#3a3a3a"
+                  : "#e5e7eb"
+            }`,
+          }}
+        >
+          <style>{`
+            .trajet-scroll::-webkit-scrollbar { display: none; }
+            .trajet-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+            .trajet-btn {
+              -webkit-tap-highlight-color: transparent;
+              outline: none;
+            }
+            .trajet-btn:focus,
+            .trajet-btn:focus-visible {
+              outline: none;
+              box-shadow: none;
+            }
+          `}</style>
+          <div className="relative">
+            <div
+              ref={trajetScrollRef}
+              className="trajet-scroll flex flex-nowrap items-center gap-3 overflow-x-auto -mx-1 px-1 pb-1"
+            >
+              {(() => {
+                const nodes = [];
+                let visIdx = 0;
+                configuredTrajetKeys.forEach((t) => {
+                  const trajetName = trajets[t]?.name || t;
+                  const isTruncated = trajetName.length > 8;
+                  const isDragging = draggingTrajetKey === t;
+
+                  // Repère "||" avant ce bouton, seulement pendant un drag et
+                  // seulement entre des boutons "réels" (pas le fantôme).
+                  if (draggingTrajetKey && !isDragging) {
+                    if (visIdx === dragTargetIndex) {
+                      nodes.push(renderInsertSlot(visIdx));
+                    }
+                    visIdx++;
+                  }
+
+                  nodes.push(
+                    <button
+                      key={t}
+                      ref={(el) => {
+                        trajetButtonRefs.current[t] = el;
+                      }}
+                      onClick={() => handleTrajetClick(t)}
+                      onPointerDown={(e) => handleTrajetPointerDown(e, t)}
+                      onPointerMove={handleTrajetPointerMove}
+                      onPointerUp={handleTrajetPointerUp}
+                      onPointerCancel={handleTrajetPointerUp}
+                      title={trajetName}
+                      style={{
+                        touchAction: "none",
+                        position: "relative",
+                      }}
+                      className={`trajet-btn flex-none w-24 select-none py-2 px-3 font-semibold text-center rounded-lg transition-opacity ${
+                        isDragging ? "opacity-30" : "transition-colors"
+                      } ${
+                        currentTrajet === t
+                          ? "bg-blue-600 text-white"
+                          : "bg-blue-100 text-blue-800 hover:bg-blue-200"
+                      }`}
+                    >
+                      {isTruncated ? (
+                        <div
+                          style={{
+                            position: "relative",
+                            overflow: "hidden",
+                            width: "100%",
+                            height: "1.2em",
+                          }}
+                        >
+                          <style>{`
+                          @keyframes marqueeSlide { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
+                          .marquee-track { display: inline-block; white-space: nowrap; animation: marqueeSlide 11s linear infinite; padding-right: 2rem; }
+                          .marquee-track-delayed { display: inline-block; white-space: nowrap; animation: marqueeSlide 11s linear infinite; animation-delay: -5.5s; position: absolute; top: 0; left: 0; padding-right: 1.5rem; }
+                        `}</style>
+                          <span className="marquee-track">{trajetName}</span>
+                          <span className="marquee-track-delayed">
+                            {trajetName}
+                          </span>
+                        </div>
+                      ) : (
+                        <span>{trajetName}</span>
+                      )}
+                    </button>,
+                  );
+                });
+                // Repère final, pour insérer après le dernier bouton.
+                if (draggingTrajetKey && dragTargetIndex === visIdx) {
+                  nodes.push(renderInsertSlot(visIdx));
+                }
+                return nodes;
+              })()}
+              {/* Espace pour pouvoir scroller le dernier bouton hors de sous le "+" superposé */}
+              {configuredTrajetKeys.length < MAX_TRAJETS && (
+                <div className="flex-none w-20" aria-hidden="true" />
+              )}
+            </div>
+
+            {/* Clone flottant du trajet en cours de réorganisation : rendu en
+                position fixed pour toujours passer au-dessus de tout le reste
+                de l'UI (carte, sheets, etc.), sans jamais être masqué. */}
+            {draggingTrajetKey && dragStartRect && (
+              <button
+                type="button"
+                aria-hidden="true"
+                tabIndex={-1}
+                style={{
+                  position: "fixed",
+                  left: dragStartRect.left,
+                  top: dragStartRect.top,
+                  width: dragStartRect.width,
+                  height: dragStartRect.height,
+                  transform: deletingTrajetKey
+                    ? `translate(${dragTranslate.x}px, ${dragTranslate.y + 40}px) scale(0.15) rotate(15deg)`
+                    : `translate(${dragTranslate.x}px, ${dragTranslate.y}px) scale(1.05)`,
+                  opacity: deletingTrajetKey ? 0 : 1,
+                  transition: deletingTrajetKey
+                    ? "transform 260ms cubic-bezier(0.4,0,0.2,1), opacity 260ms ease-out"
+                    : "none",
+                  zIndex: 9999,
+                  pointerEvents: "none",
+                  boxShadow: `0 10px 15px -3px ${dragShadowColor}, 0 4px 6px -4px ${dragShadowColor}`,
+                }}
+                className={`trajet-btn select-none py-2 px-3 font-semibold text-center rounded-lg opacity-95 ${
+                  currentTrajet === draggingTrajetKey
+                    ? "bg-blue-600 text-white"
+                    : "bg-blue-100 text-blue-800"
+                }`}
+              >
+                <span className="block truncate">
+                  {trajets[draggingTrajetKey]?.name || draggingTrajetKey}
+                </span>
+              </button>
+            )}
+
+            {trashDockMounted && (
+              <div
+                ref={trashZoneRef}
+                className="fixed z-[9998] pointer-events-none rounded-full flex items-start justify-center"
+                style={{
+                  left: "50%",
+                  width: "220vw",
+                  aspectRatio: "1 / 1",
+                  bottom: !trashDockVisible
+                    ? "-220vw"
+                    : isOverTrash
+                      ? "calc(-220vw + 200px)"
+                      : "calc(-220vw + 170px)",
+                  transform: "translateX(-50%)",
+                  backgroundColor: isOverTrash
+                    ? trashActiveColor
+                    : trashIdleColor,
+                  boxShadow: `0 -8px 24px ${trashShadowColor}`,
+                  paddingTop: isOverTrash ? 60 : 70,
+                  transition:
+                    "bottom 260ms cubic-bezier(0.4,0,0.2,1), background-color 200ms ease-out, padding-top 200ms ease-out",
+                }}
+              >
+                <div className="flex flex-col items-center gap-1">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="white"
+                    strokeWidth={1.8}
+                    style={{
+                      width: isOverTrash ? 34 : 28,
+                      height: isOverTrash ? 34 : 28,
+                      transition: "width 200ms ease, height 200ms ease",
+                    }}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M6 7h12M9.5 7V5.25A1.25 1.25 0 0 1 10.75 4h2.5A1.25 1.25 0 0 1 14.5 5.25V7m-7 0 .69 11.02A2 2 0 0 0 10.18 20h3.64a2 2 0 0 0 1.99-1.98L16.5 7m-6 3.5v5m3-5v5"
+                    />
+                  </svg>
+                  <span
+                    className="text-white text-xs font-semibold transition-opacity duration-150"
+                    style={{ opacity: isOverTrash ? 1 : 0.7 }}
+                  >
+                    {isOverTrash ? "Relâcher pour supprimer" : "Supprimer"}
+                  </span>
+                </div>
+              </div>
+            )}
+            {configuredTrajetKeys.length < MAX_TRAJETS && (
+              <>
+                <div
+                  className="pointer-events-none absolute -right-1 top-0 bottom-1 w-28"
+                  style={{
+                    background: `linear-gradient(to left, ${
+                      theme === "dark"
+                        ? "#1e293b"
+                        : theme === "gray"
+                          ? "#252526"
+                          : "#ffffff"
+                    } 55%, ${
+                      theme === "dark"
+                        ? "#1e293bF2"
+                        : theme === "gray"
+                          ? "#252526F2"
+                          : "#ffffffF2"
+                    } 80%, transparent)`,
+                  }}
+                  aria-hidden="true"
+                />
                 <button
-                  key={t}
-                  onClick={() => loadTrajet(t)}
-                  title={trajetName}
-                  className={`flex-1 py-2 px-3 font-semibold transition-colors text-center rounded-lg overflow-hidden ${
-                    currentTrajet === t
-                      ? "bg-blue-600 text-white"
-                      : isConfigured(t)
-                        ? "bg-blue-100 text-blue-800 hover:bg-blue-200"
-                        : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                  type="button"
+                  onClick={handleAddTrajet}
+                  title="Ajouter un trajet"
+                  aria-label="Ajouter un trajet"
+                  style={{
+                    backgroundColor:
+                      theme === "dark"
+                        ? "#1e293b"
+                        : theme === "gray"
+                          ? "#252526"
+                          : "#ffffff",
+                    borderColor:
+                      theme === "dark"
+                        ? "#94a3b8"
+                        : theme === "gray"
+                          ? "#8a8a8a"
+                          : "#d1d5db",
+                    WebkitTapHighlightColor: "transparent",
+                    outline: "none",
+                  }}
+                  className={`trajet-btn absolute -right-1 top-0 z-10 w-20 h-[42px] flex items-center justify-center rounded-lg border-2 border-dashed transition-colors ${
+                    theme !== "light"
+                      ? "text-slate-200"
+                      : "text-gray-400 hover:text-blue-600 hover:border-blue-400"
                   }`}
                 >
-                  {isTruncated ? (
-                    <div
-                      style={{
-                        position: "relative",
-                        overflow: "hidden",
-                        width: "100%",
-                        height: "1.2em",
-                      }}
-                    >
-                      <style>{`
-                        @keyframes marqueeSlide { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
-                        .marquee-track { display: inline-block; white-space: nowrap; animation: marqueeSlide 11s linear infinite; padding-right: 2rem; }
-                        .marquee-track-delayed { display: inline-block; white-space: nowrap; animation: marqueeSlide 11s linear infinite; animation-delay: -5.5s; position: absolute; top: 0; left: 0; padding-right: 1.5rem; }
-                      `}</style>
-                      <span className="marquee-track">{trajetName}</span>
-                      <span className="marquee-track-delayed">
-                        {trajetName}
-                      </span>
-                    </div>
-                  ) : (
-                    <span>{trajetName}</span>
-                  )}
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={2}
+                    stroke="currentColor"
+                    className="size-5"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 4.5v15m7.5-7.5h-15"
+                    />
+                  </svg>
                 </button>
-              );
-            })}
+              </>
+            )}
           </div>
         </div>
 
         {/* ── Carte principale ────────────────────────────────────────── */}
-        <div className="m-4 p-4 rounded-lg border border-gray-300 bg-white shadow-xl">
+        <div className="m-4 p-4 rounded-2xl border border-gray-300 bg-white shadow-xl">
           <div className="flex justify-between items-center mb-3">
             <div className="flex items-center gap-2">
               <h1 className="text-2xl font-bold">
@@ -1192,7 +1830,7 @@ export default function MesTrajets() {
                   <span
                     className={`font-bold text-lg ${theme !== "light" ? "text-slate-100" : "text-slate-900"}`}
                   >
-                    Renommer le trajet {currentTrajet}
+                    Renommer {trajets[currentTrajet]?.name || currentTrajet}
                   </span>
                   <button
                     className={
@@ -1242,11 +1880,9 @@ export default function MesTrajets() {
                   </label>
                   <button
                     onClick={() => {
-                      const fallback = {
-                        T1: "Trajet 1",
-                        T2: "Trajet 2",
-                        T3: "Trajet 3",
-                      };
+                      const fallback = Object.fromEntries(
+                        TRAJET_KEYS.map((t, i) => [t, `Trajet ${i + 1}`]),
+                      );
                       setTrajets((prev) => ({
                         ...prev,
                         [currentTrajet]: {
@@ -1260,19 +1896,6 @@ export default function MesTrajets() {
                     className="w-full px-4 py-3 bg-blue-600 text-white rounded-xl font-semibold"
                   >
                     Confirmer
-                  </button>
-                  <button
-                    onClick={() => {
-                      setRenameOpen(false);
-                      setInputsOpen(inputsOpenBeforeRenameRef.current);
-                    }}
-                    className={`w-full px-4 py-3 rounded-xl font-semibold ${
-                      theme !== "light"
-                        ? "bg-slate-700 text-slate-200"
-                        : "bg-gray-100 text-gray-700"
-                    }`}
-                  >
-                    Annuler
                   </button>
                 </div>
               </div>
@@ -1291,7 +1914,13 @@ export default function MesTrajets() {
           <Sheet.Container style={{ borderRadius: "24px 24px 0 0" }}>
             <Sheet.Content disableDrag>
               <SearchForm
-                title={`Configuration — ${trajets[currentTrajet]?.name || currentTrajet}`}
+                title={trajets[currentTrajet]?.name || currentTrajet}
+                onRename={() => {
+                  inputsOpenBeforeRenameRef.current = inputsOpen;
+                  setInputsOpen(false);
+                  setNewTrajetName(trajets[currentTrajet]?.name || "");
+                  setRenameOpen(true);
+                }}
                 dep={dep}
                 arr={arr}
                 depDisplay={resolveDisplayName(dep)}
@@ -1339,6 +1968,21 @@ export default function MesTrajets() {
                     arrivalTime,
                   })
                 }
+                onSwapAndSearch={() => {
+                  const newDep = arr;
+                  const newArr = dep;
+                  setDep(newDep);
+                  setArr(newArr);
+                  search(0, {
+                    dep: newDep,
+                    arr: newArr,
+                    manual: true,
+                    searchDate: searchBaseDate,
+                    searchTime,
+                    departureTime,
+                    arrivalTime,
+                  });
+                }}
                 onReset={reset}
                 onCancel={cancel}
                 loading={loading}

@@ -15,7 +15,8 @@ const MAPTILER_STYLE_URL_LIGHT =
   "https://api.maptiler.com/maps/019d0d02-359b-7f4b-a797-bdeabca9dce3/style.json?key=7TQErbyvEqFlis3QMmSl";
 const MAPTILER_STYLE_URL_DARK =
   "https://api.maptiler.com/maps/019f7c73-0431-726f-ae5d-598a16a06771/style.json?key=7TQErbyvEqFlis3QMmSl";
-
+const MAPTILER_STYLE_URL_DARK_BLUE =
+  "https://api.maptiler.com/maps/01a00098-f343-7789-990e-687ae5296acd/style.json?key=7TQErbyvEqFlis3QMmSl";
 const ArrowIcon = () => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -145,9 +146,10 @@ function isCloserToPdsThanVerdun(point) {
 }
 
 function isLegHeadingTowardPds(leg) {
-  const point = Number.isFinite(leg.from?.lat) && Number.isFinite(leg.from?.lon)
-    ? leg.from
-    : leg.to;
+  const point =
+    Number.isFinite(leg.from?.lat) && Number.isFinite(leg.from?.lon)
+      ? leg.from
+      : leg.to;
   if (!Number.isFinite(point?.lat) || !Number.isFinite(point?.lon)) return true;
   return !isCloserToPdsThanVerdun(point);
 }
@@ -206,7 +208,8 @@ function getNavbSegment(leg) {
 export function getLegGeometry(leg) {
   if (leg.mode !== "WALK") {
     const lineName = getLegLineName(leg);
-    if (lineName === "B") return getLineBSegment(leg) || magnetizeLegGeometry(leg);
+    if (lineName === "B")
+      return getLineBSegment(leg) || magnetizeLegGeometry(leg);
     if (lineName === "NAVB")
       return getNavbSegment(leg) || magnetizeLegGeometry(leg);
   }
@@ -444,7 +447,11 @@ export function InlineJourneyMap({
   const [mapMounted, setMapMounted] = useState(false);
   const theme = useTheme();
   const mapStyle =
-    theme !== "light" ? MAPTILER_STYLE_URL_DARK : MAPTILER_STYLE_URL_LIGHT;
+    theme === "dark"
+      ? MAPTILER_STYLE_URL_DARK_BLUE
+      : theme === "gray"
+        ? MAPTILER_STYLE_URL_DARK
+        : MAPTILER_STYLE_URL_LIGHT;
 
   // On monte la carte dès le premier open pour éviter de la re-créer
   useEffect(() => {
@@ -509,20 +516,23 @@ export function InlineJourneyMap({
     }))
     .filter((m) => m.lon && m.lat);
 
-  const allTransitStops = showIntermediateStops ? transitLegs.flatMap((leg) => {
-    const lineName = (leg.routeShortName || leg.route || leg.routeId || "")
-      .replace("SEM:", "")
-      .toUpperCase();
-    const color = LINE_COLORS[lineName] || lineColors?.[lineName] || "#94A3B8";
-    return [...(leg.intermediateStops || []), leg.to]
-      .filter((stop) => stop?.lon && stop?.lat)
-      .map((s) => ({
-        lon: s.lon,
-        lat: s.lat,
-        name: s.name,
-        color,
-      }));
-  }) : [];
+  const allTransitStops = showIntermediateStops
+    ? transitLegs.flatMap((leg) => {
+        const lineName = (leg.routeShortName || leg.route || leg.routeId || "")
+          .replace("SEM:", "")
+          .toUpperCase();
+        const color =
+          LINE_COLORS[lineName] || lineColors?.[lineName] || "#94A3B8";
+        return [...(leg.intermediateStops || []), leg.to]
+          .filter((stop) => stop?.lon && stop?.lat)
+          .map((s) => ({
+            lon: s.lon,
+            lat: s.lat,
+            name: s.name,
+            color,
+          }));
+      })
+    : [];
 
   const walkTransitionStops = allLegs
     .flatMap((leg, index) =>

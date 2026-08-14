@@ -21,6 +21,8 @@ const MAPTILER_STYLE_URL_LIGHT =
   "https://api.maptiler.com/maps/019d0d02-359b-7f4b-a797-bdeabca9dce3/style.json?key=7TQErbyvEqFlis3QMmSl";
 const MAPTILER_STYLE_URL_DARK =
   "https://api.maptiler.com/maps/019f7c73-0431-726f-ae5d-598a16a06771/style.json?key=7TQErbyvEqFlis3QMmSl";
+const MAPTILER_STYLE_URL_DARK_BLUE =
+  "https://api.maptiler.com/maps/01a00098-f343-7789-990e-687ae5296acd/style.json?key=7TQErbyvEqFlis3QMmSl";
 
 const GRENOBLE_CENTER = { longitude: 5.74892, latitude: 45.18501 };
 function stripNetworkPrefix(routeName) {
@@ -704,7 +706,11 @@ export default function StopPickerMap({
   const mapRef = useRef(null);
   const theme = useTheme();
   const mapStyle =
-    theme !== "light" ? MAPTILER_STYLE_URL_DARK : MAPTILER_STYLE_URL_LIGHT;
+    theme === "dark"
+      ? MAPTILER_STYLE_URL_DARK_BLUE
+      : theme === "gray"
+        ? MAPTILER_STYLE_URL_DARK
+        : MAPTILER_STYLE_URL_LIGHT;
   const [bounds, setBounds] = useState(null);
   const [zoom, setZoom] = useState(13);
   const [locLoading, setLocLoading] = useState(false);
