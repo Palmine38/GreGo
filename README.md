@@ -4,6 +4,8 @@
 [![Vite](https://img.shields.io/badge/Vite-8.0.0-646CFF.svg)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.3.6-38B2AC.svg)](https://tailwindcss.com/)
 [![React Router](https://img.shields.io/badge/React_Router-7.13.1-CA4245.svg)](https://reactrouter.com/)
+## APIs utilisées
+[![MapTiler](https://img.shields.io/badge/MapTiler-API-000000.svg)](https://www.maptiler.com/)
 
 > Une application web progressive et moderne optimisée (PWA) pour Mobile. Gérez et recherchez des trajets de transport utilisant l'API ouverte TAG (Transports de l'Agglomération Grenobloise) et les données en temps réel GBFS (General Bikeshare Feed Specification).
 
