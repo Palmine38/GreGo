@@ -3,6 +3,13 @@ import { Sheet } from "react-modal-sheet";
 import { useTheme } from "../hooks/useTheme.js";
 import { useGbfsPricing } from "../hooks/useGbfsPricing.js";
 import { FaCar } from "react-icons/fa";
+import {
+  NavbarPillSheetRoot,
+  NavbarPillShell,
+  NavbarPillBody,
+  useNavbarPillMetrics,
+  navbarSnapPx,
+} from "./NavbarPillSheet.jsx";
 
 const LOGO_SRC = {
   voi: "/GBFS/Voi.svg",
@@ -478,6 +485,7 @@ function VehicleDetail({
 export function GbfsSheet({ isOpen, onClose, kind, address, vehicles = [] }) {
   const theme = useTheme();
   const [selectedVehicle, setSelectedVehicle] = useState(null);
+  const { safeBottom, collapsedPadding } = useNavbarPillMetrics();
 
   const {
     plans,
@@ -505,92 +513,104 @@ export function GbfsSheet({ isOpen, onClose, kind, address, vehicles = [] }) {
       : LOGO_SRC[kind];
 
   return (
-    <Sheet
+    <NavbarPillSheetRoot
       isOpen={isOpen}
       onClose={onClose}
-      snapPoints={[0, 0.4, 0.75, 1]}
-      initialSnap={1}
+      // Palier pilule inséré juste après 0 (position obligatoire, cf.
+      // NavbarPillSheetRoot). Les paliers de contenu (0.4 / 0.75 / 1)
+      // gardent leurs proportions d'avant ; l'ouverture par défaut se fait
+      // toujours sur le palier "0.4" (désormais en position 2).
+      snapPoints={[0, navbarSnapPx(safeBottom), 0.4, 0.75, 1]}
+      initialSnap={2}
     >
-      <Sheet.Container
-        style={{ borderRadius: "24px 24px 0 0", overflow: "hidden" }}
+      <NavbarPillShell
+        bottomInset={safeBottom}
+        collapsedPadding={collapsedPadding}
+        // Bord-à-bord dès le palier 0.4 (au lieu d'attendre le palier 100%) :
+        // c'est le comportement demandé, calqué sur InfotraficSheet.
+        revealedPadding={0}
+        revealedBottomGap={0}
+        revealedBottomRadius={0}
       >
         <Sheet.Header />
         <Sheet.Content>
-          <div className="relative h-full overflow-hidden">
-            {/* ── Vue liste ── */}
-            <div
-              className="flex h-full flex-col px-5 pb-8 overflow-y-auto transition-transform duration-300 ease-out"
-              style={{
-                transform: selectedVehicle
-                  ? "translateX(-100%)"
-                  : "translateX(0)",
-              }}
-            >
-              <div className="flex items-center pt-1">
-                <img
-                  src={logoSrc}
-                  alt={LOGO_LABEL[kind]}
-                  className="h-8 w-auto"
-                />
-              </div>
+          <NavbarPillBody>
+            <div className="relative h-full overflow-hidden">
+              {/* ── Vue liste ── */}
+              <div
+                className="flex h-full flex-col px-5 pb-8 overflow-y-auto transition-transform duration-300 ease-out"
+                style={{
+                  transform: selectedVehicle
+                    ? "translateX(-100%)"
+                    : "translateX(0)",
+                }}
+              >
+                <div className="flex items-center pt-1">
+                  <img
+                    src={logoSrc}
+                    alt={LOGO_LABEL[kind]}
+                    className="h-8 w-auto"
+                  />
+                </div>
 
-              <div className="mt-4">
-                <h2 className="mt-1 text-sm font-bold text-slate-900">
-                  {address || "Adresse inconnue"}
-                </h2>
-              </div>
+                <div className="mt-4">
+                  <h2 className="mt-1 text-sm font-bold text-slate-900">
+                    {address || "Adresse inconnue"}
+                  </h2>
+                </div>
 
-              <div className="mt-6 border-t border-slate-100 pt-5">
-                <p className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">
-                  {totalVehicles > 1
-                    ? `${totalVehicles} véhicules disponibles`
-                    : totalVehicles === 1
-                      ? "Véhicule disponible"
-                      : "Disponibilité"}
-                </p>
-                <div className="space-y-2">
-                  {vehicles.map((vehicle) => (
-                    <VehicleCard
-                      key={vehicle.id}
-                      vehicle={vehicle}
-                      onClick={() => setSelectedVehicle(vehicle)}
-                    />
-                  ))}
-                  {vehicles.length === 0 && (
-                    <p className="text-sm text-slate-500 py-2">
-                      Aucun véhicule disponible ici pour le moment.
-                    </p>
-                  )}
+                <div className="mt-6 border-t border-slate-100 pt-5">
+                  <p className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">
+                    {totalVehicles > 1
+                      ? `${totalVehicles} véhicules disponibles`
+                      : totalVehicles === 1
+                        ? "Véhicule disponible"
+                        : "Disponibilité"}
+                  </p>
+                  <div className="space-y-2">
+                    {vehicles.map((vehicle) => (
+                      <VehicleCard
+                        key={vehicle.id}
+                        vehicle={vehicle}
+                        onClick={() => setSelectedVehicle(vehicle)}
+                      />
+                    ))}
+                    {vehicles.length === 0 && (
+                      <p className="text-sm text-slate-500 py-2">
+                        Aucun véhicule disponible ici pour le moment.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            {/* ── Vue détail véhicule ── */}
-            <div
-              className="absolute inset-0 flex h-full flex-col px-5 pb-8 overflow-y-auto transition-transform duration-300 ease-out"
-              style={{
-                transform: selectedVehicle
-                  ? "translateX(0)"
-                  : "translateX(100%)",
-              }}
-            >
-              {selectedVehicle && (
-                <VehicleDetail
-                  vehicle={selectedVehicle}
-                  kind={kind}
-                  logoSrc={logoSrc}
-                  theme={theme}
-                  plans={plans}
-                  pricingLoading={pricingLoading}
-                  pricingError={pricingError}
-                  onBack={() => setSelectedVehicle(null)}
-                />
-              )}
+              {/* ── Vue détail véhicule ── */}
+              <div
+                className="absolute inset-0 flex h-full flex-col px-5 pb-8 overflow-y-auto transition-transform duration-300 ease-out"
+                style={{
+                  transform: selectedVehicle
+                    ? "translateX(0)"
+                    : "translateX(100%)",
+                }}
+              >
+                {selectedVehicle && (
+                  <VehicleDetail
+                    vehicle={selectedVehicle}
+                    kind={kind}
+                    logoSrc={logoSrc}
+                    theme={theme}
+                    plans={plans}
+                    pricingLoading={pricingLoading}
+                    pricingError={pricingError}
+                    onBack={() => setSelectedVehicle(null)}
+                  />
+                )}
+              </div>
             </div>
-          </div>
+          </NavbarPillBody>
         </Sheet.Content>
-      </Sheet.Container>
+      </NavbarPillShell>
       <Sheet.Backdrop style={{ pointerEvents: "none" }} />
-    </Sheet>
+    </NavbarPillSheetRoot>
   );
 }

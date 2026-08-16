@@ -1,5 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Sheet } from "react-modal-sheet";
+import {
+  NavbarPillBody,
+  NavbarPillSheetRoot,
+  NavbarPillShell,
+  navbarSnapPx,
+  useNavbarPillMetrics,
+} from "./NavbarPillSheet.jsx";
 import LineIcon from "./lines-icons.jsx";
 import { DisruptionItem } from "./DisruptionItem.jsx";
 import { useTheme } from "../hooks/useTheme.js";
@@ -249,6 +256,14 @@ export function StopDetailsSheet({
   const [loading, setLoading] = useState(false);
   const autoSelectedStopId = useRef(null);
 
+  // Le palier 1 a la forme de la pilule de navigation : en descendre plus bas
+  // referme la fiche et la rend à la barre d'onglets, qui prend le relais.
+  const { safeBottom, collapsedPadding } = useNavbarPillMetrics();
+  const snapPoints = useMemo(
+    () => [0, navbarSnapPx(safeBottom), 0.35, 0.72, 1],
+    [safeBottom],
+  );
+
   useEffect(() => {
     if (!isOpen || !stop?.stopTimesClusterId) return undefined;
     let cancelled = false;
@@ -312,194 +327,201 @@ export function StopDetailsSheet({
   if (!stop) return null;
 
   return (
-    <Sheet
+    <NavbarPillSheetRoot
       isOpen={isOpen}
       onClose={onClose}
-      snapPoints={[0, 0.35, 0.72, 1]}
-      initialSnap={2}
+      snapPoints={snapPoints}
+      initialSnap={3}
     >
-      <Sheet.Container
-        style={{ borderRadius: "24px 24px 0 0", overflow: "hidden" }}
+      <NavbarPillShell
+        bottomInset={safeBottom}
+        collapsedPadding={collapsedPadding}
+        revealedPadding={0}
+        revealedBottomGap={0}
+        revealedBottomRadius={0}
       >
         <Sheet.Header />
         <Sheet.Content>
-          <div className="relative h-full overflow-hidden">
-            {/* ── Vue principale ── */}
-            <div
-              className="flex h-full flex-col px-5 pb-8 overflow-y-auto transition-transform duration-300 ease-out"
-              style={{
-                transform: activeLine ? "translateX(-100%)" : "translateX(0)",
-              }}
-            >
-              <div className="flex items-start justify-between gap-4 pt-1">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
-                    Arrêt
-                  </p>
-                  <h2 className="mt-1 text-xl font-bold text-slate-900">
-                    {stop.name}
-                  </h2>
-                  <p className="text-sm text-slate-500">
-                    {stop.city || "Grenoble et agglomération"}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => onSetArrival(stop)}
-                  className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm active:scale-95 flex items-center gap-2"
-                >
-                  GO
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    strokeWidth={1.5}
-                    stroke="currentColor"
-                    className="size-4"
+          <NavbarPillBody>
+            <div className="relative h-full overflow-hidden">
+              {/* ── Vue principale ── */}
+              <div
+                className="flex h-full flex-col px-5 pb-8 overflow-y-auto transition-transform duration-300 ease-out"
+                style={{
+                  transform: activeLine ? "translateX(-100%)" : "translateX(0)",
+                }}
+              >
+                <div className="flex items-start justify-between gap-4 pt-1">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                      Arrêt
+                    </p>
+                    <h2 className="mt-1 text-xl font-bold text-slate-900">
+                      {stop.name}
+                    </h2>
+                    <p className="text-sm text-slate-500">
+                      {stop.city || "Grenoble et agglomération"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onSetArrival(stop)}
+                    className="rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm active:scale-95 flex items-center gap-2"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"
-                    />
-                  </svg>
-                </button>
+                    GO
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      strokeWidth={1.5}
+                      stroke="currentColor"
+                      className="size-4"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"
+                      />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="mt-4 border-tpt-5">
+                  {loading && lines.length === 0 ? (
+                    <p className="text-sm text-slate-500">Chargement…</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-3">
+                      {lines.map((line) => {
+                        const disrupted =
+                          getLineDisruptions?.(line)?.length > 0;
+                        return (
+                          <button
+                            key={line}
+                            type="button"
+                            onClick={() => onLineSelect?.(line)}
+                            className="relative rounded-2xl p-1 transition active:scale-95"
+                            aria-label={`Afficher la ligne ${line}`}
+                          >
+                            <LineIcon lineKey={line} size="w-12 h-12" />
+                            {disrupted && (
+                              <span
+                                className="absolute -bottom-1 -right-1"
+                                style={{ color: disruptedColor }}
+                              >
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  viewBox="0 0 16 16"
+                                  fill="currentColor"
+                                  className="size-6"
+                                >
+                                  <path
+                                    d="M8 3.5 3 12.5h10L8 3.5Z"
+                                    fill="white"
+                                  />
+                                  <path
+                                    fillRule="evenodd"
+                                    d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
+                                    clipRule="evenodd"
+                                  />
+                                </svg>
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                      {!loading && lines.length === 0 && (
+                        <p className="text-sm text-slate-500">
+                          Aucune ligne disponible.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-6 border-t border-slate-100 pt-5">
+                  <p className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">
+                    Prochains passages
+                  </p>
+                  <PassageList
+                    passages={allPassages}
+                    loading={loading}
+                    showLine
+                  />
+                </div>
               </div>
 
-              <div className="mt-4 border-tpt-5">
-                {loading && lines.length === 0 ? (
-                  <p className="text-sm text-slate-500">Chargement…</p>
-                ) : (
-                  <div className="flex flex-wrap gap-3">
-                    {lines.map((line) => {
-                      const disrupted = getLineDisruptions?.(line)?.length > 0;
-                      return (
-                        <button
-                          key={line}
-                          type="button"
-                          onClick={() => onLineSelect?.(line)}
-                          className="relative rounded-2xl p-1 transition active:scale-95"
-                          aria-label={`Afficher la ligne ${line}`}
+              {/* ── Vue détail ligne ── */}
+              <div
+                className="absolute inset-0 flex h-full flex-col px-5 pb-8 overflow-y-auto transition-transform duration-300 ease-out"
+                style={{
+                  transform: activeLine ? "translateX(0)" : "translateX(100%)",
+                }}
+              >
+                {activeLine && (
+                  <>
+                    <div className="flex items-center gap-3 pt-1">
+                      <button
+                        type="button"
+                        onClick={onBack}
+                        aria-label="Retour à l'arrêt"
+                        className="flex size-9 items-center justify-center rounded-full text-slate-700"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          strokeWidth={2}
+                          stroke="currentColor"
+                          className="w-5 h-5"
                         >
-                          <LineIcon lineKey={line} size="w-12 h-12" />
-                          {disrupted && (
-                            <span
-                              className="absolute -bottom-1 -right-1"
-                              style={{ color: disruptedColor }}
-                            >
-                              <svg
-                                xmlns="http://www.w3.org/2000/svg"
-                                viewBox="0 0 16 16"
-                                fill="currentColor"
-                                className="size-6"
-                              >
-                                <path
-                                  d="M8 3.5 3 12.5h10L8 3.5Z"
-                                  fill="white"
-                                />
-                                <path
-                                  fillRule="evenodd"
-                                  d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                    {!loading && lines.length === 0 && (
-                      <p className="text-sm text-slate-500">
-                        Aucune ligne disponible.
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M15.75 19.5 8.25 12l7.5-7.5"
+                          />
+                        </svg>
+                      </button>
+                      <LineIcon lineKey={activeLine} size="w-10 h-10" />
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
+                          Ligne {activeLine}
+                        </p>
+                        <h2 className="text-lg font-bold text-slate-900">
+                          Prochains passages
+                        </h2>
+                      </div>
+                    </div>
+
+                    <div className="mt-5">
+                      <PassageList
+                        passages={activeLinePassages}
+                        loading={loading}
+                        showLine={false}
+                      />
+                    </div>
+
+                    <div className="mt-6 border-t border-slate-100 pt-5">
+                      <p className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">
+                        Infotrafic
                       </p>
-                    )}
-                  </div>
+                      {(getLineDisruptions?.(activeLine) || []).length === 0 ? (
+                        <p className="text-sm text-slate-500">
+                          Aucune perturbation en cours.
+                        </p>
+                      ) : (
+                        getLineDisruptions(activeLine).map((evt, index) => (
+                          <DisruptionItem key={index} evt={evt} />
+                        ))
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
-
-              <div className="mt-6 border-t border-slate-100 pt-5">
-                <p className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">
-                  Prochains passages
-                </p>
-                <PassageList
-                  passages={allPassages}
-                  loading={loading}
-                  showLine
-                />
-              </div>
             </div>
-
-            {/* ── Vue détail ligne ── */}
-            <div
-              className="absolute inset-0 flex h-full flex-col px-5 pb-8 overflow-y-auto transition-transform duration-300 ease-out"
-              style={{
-                transform: activeLine ? "translateX(0)" : "translateX(100%)",
-              }}
-            >
-              {activeLine && (
-                <>
-                  <div className="flex items-center gap-3 pt-1">
-                    <button
-                      type="button"
-                      onClick={onBack}
-                      aria-label="Retour à l'arrêt"
-                      className="flex size-9 items-center justify-center rounded-full text-slate-700"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        strokeWidth={2}
-                        stroke="currentColor"
-                        className="w-5 h-5"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M15.75 19.5 8.25 12l7.5-7.5"
-                        />
-                      </svg>
-                    </button>
-                    <LineIcon lineKey={activeLine} size="w-10 h-10" />
-                    <div>
-                      <p className="text-xs font-bold uppercase tracking-widest text-slate-400">
-                        Ligne {activeLine}
-                      </p>
-                      <h2 className="text-lg font-bold text-slate-900">
-                        Prochains passages
-                      </h2>
-                    </div>
-                  </div>
-
-                  <div className="mt-5">
-                    <PassageList
-                      passages={activeLinePassages}
-                      loading={loading}
-                      showLine={false}
-                    />
-                  </div>
-
-                  <div className="mt-6 border-t border-slate-100 pt-5">
-                    <p className="mb-3 text-xs font-bold uppercase tracking-widest text-slate-400">
-                      Infotrafic
-                    </p>
-                    {(getLineDisruptions?.(activeLine) || []).length === 0 ? (
-                      <p className="text-sm text-slate-500">
-                        Aucune perturbation en cours.
-                      </p>
-                    ) : (
-                      getLineDisruptions(activeLine).map((evt, index) => (
-                        <DisruptionItem key={index} evt={evt} />
-                      ))
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
+          </NavbarPillBody>
         </Sheet.Content>
-      </Sheet.Container>
+      </NavbarPillShell>
       <Sheet.Backdrop style={{ pointerEvents: "none" }} />
-    </Sheet>
+    </NavbarPillSheetRoot>
   );
 }
