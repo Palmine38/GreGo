@@ -4,20 +4,49 @@ export const THEMES = {
   LIGHT: "light",
   DARK: "dark",
   GRAY: "gray",
+  AUTO: "auto",
 };
 
 export function normalizeTheme(theme) {
-  return Object.values(THEMES).includes(theme) ? theme : THEMES.LIGHT;
+  return Object.values(THEMES).includes(theme) ? theme : THEMES.AUTO;
+}
+
+function getSystemTheme() {
+  if (typeof window === "undefined" || !window.matchMedia) return THEMES.LIGHT;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? THEMES.GRAY
+    : THEMES.LIGHT;
+}
+
+// Résout un thème stocké (qui peut être "auto") vers un thème réellement
+// applicable (light | dark | gray) en fonction des préférences système.
+export function resolveTheme(theme) {
+  const nextTheme = normalizeTheme(theme);
+  return nextTheme === THEMES.AUTO ? getSystemTheme() : nextTheme;
 }
 
 export function applyTheme(theme) {
-  const nextTheme = normalizeTheme(theme);
+  const resolved = resolveTheme(theme);
   const root = document.documentElement;
-  root.classList.toggle("dark", nextTheme === THEMES.DARK);
-  root.classList.toggle("gray", nextTheme === THEMES.GRAY);
-  root.dataset.theme = nextTheme;
-  root.style.colorScheme = nextTheme === THEMES.LIGHT ? "light" : "dark";
-  return nextTheme;
+  root.classList.toggle("dark", resolved === THEMES.DARK);
+  root.classList.toggle("gray", resolved === THEMES.GRAY);
+  root.dataset.theme = resolved;
+  root.style.colorScheme = resolved === THEMES.LIGHT ? "light" : "dark";
+  return resolved;
+}
+
+// Permet de réagir en direct à un changement de thème système (utile quand
+// le thème sélectionné est "auto").
+export function watchSystemTheme(callback) {
+  if (typeof window === "undefined" || !window.matchMedia) return () => {};
+  const mql = window.matchMedia("(prefers-color-scheme: dark)");
+  const handler = () => callback();
+  if (mql.addEventListener) mql.addEventListener("change", handler);
+  else mql.addListener(handler);
+  return () => {
+    if (mql.removeEventListener) mql.removeEventListener("change", handler);
+    else mql.removeListener(handler);
+  };
 }
 
 export function getTheme() {

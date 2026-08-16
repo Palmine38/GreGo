@@ -1,7 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import Navbar from "./navbar.jsx";
-import { applyTheme, normalizeTheme, THEMES } from "./hooks/useTheme.js";
+import {
+  applyTheme,
+  normalizeTheme,
+  watchSystemTheme,
+  THEMES,
+} from "./hooks/useTheme.js";
 import { usePerfSettings } from "./hooks/usePerfSettings.js";
 import { NotificationToast } from "./components/NotificationToast.jsx";
 const DEBUG = true;
@@ -9,11 +14,11 @@ const DEBUG = true;
 const DEFAULTS = {
   wheelchair: false,
   walkSpeed: 1.4,
-  numItineraries: 10,
+  numItineraries: 50,
   headerLines: "all",
   showJourneyDisruptions: true,
   showIntermediateStops: true,
-  theme: "light",
+  theme: THEMES.AUTO,
 };
 
 const SLIDER_MAX = 20;
@@ -67,6 +72,11 @@ export default function Settings() {
     initial.showIntermediateStops,
   );
   const [theme, setTheme] = useState(initial.theme);
+  const [systemPrefersDark, setSystemPrefersDark] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-color-scheme: dark)").matches,
+  );
   const [resetStep, setResetStep] = useState(null); // null | 'warn' | 'confirm'
   const [resetClosing, setResetClosing] = useState(false);
   const [isBottomBarCompact, setIsBottomBarCompact] = useState(
@@ -176,6 +186,23 @@ export default function Settings() {
     theme,
   ]);
 
+  useEffect(() => {
+    return watchSystemTheme(() =>
+      setSystemPrefersDark(
+        window.matchMedia("(prefers-color-scheme: dark)").matches,
+      ),
+    );
+  }, []);
+
+  useEffect(() => {
+    if (theme !== THEMES.AUTO) return;
+    const unsubscribe = watchSystemTheme(() => {
+      applyTheme(theme);
+      window.dispatchEvent(new Event("tag-express-theme-change"));
+    });
+    return unsubscribe;
+  }, [theme]);
+
   const speedInKmh = (walkSpeed * 3.6).toFixed(1);
   const handleSpeedChange = (kmh) => setWalkSpeed(kmh / 3.6);
 
@@ -223,30 +250,91 @@ export default function Settings() {
               <span className="block text-sm font-semibold mb-3">
                 Apparence
               </span>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+              <div className="grid grid-cols-4 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTheme(THEMES.AUTO)}
+                  aria-label="Thème automatique (système)"
+                  aria-pressed={theme === THEMES.AUTO}
+                  className={`flex h-14 items-center justify-center rounded-lg border transition-colors ${
+                    theme === THEMES.AUTO
+                      ? systemPrefersDark
+                        ? "border-slate-400 bg-[#3c3c3c] text-slate-100"
+                        : "border-blue-600 bg-blue-50 text-blue-700"
+                      : "border-gray-300 text-gray-700 hover:bg-gray-100"
+                  }`}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth={1.5}
+                    stroke="currentColor"
+                    className="size-6"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M9 17.25v1.007a3 3 0 0 1-.879 2.122L7.5 21h9l-.621-.621A3 3 0 0 1 15 18.257V17.25m6-12V15a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 15V5.25m18 0A2.25 2.25 0 0 0 18.75 3H5.25A2.25 2.25 0 0 0 3 5.25m18 0V12a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 12V5.25"
+                    />
+                  </svg>
+                </button>
                 <button
                   type="button"
                   onClick={() => setTheme(THEMES.LIGHT)}
-                  className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${theme === THEMES.LIGHT ? "border-blue-600 bg-blue-50 text-blue-700" : "border-gray-300 text-gray-700 hover:bg-gray-100"}`}
+                  aria-label="Thème clair"
                   aria-pressed={theme === THEMES.LIGHT}
+                  className={`flex h-14 items-center justify-center rounded-lg border transition-colors ${theme === THEMES.LIGHT ? "border-blue-600 bg-blue-50" : "border-gray-300 hover:bg-gray-100"}`}
                 >
-                  Thème clair
+                  <svg viewBox="0 0 24 24" className="size-9">
+                    <defs>
+                      <clipPath id="themeSwatchLight">
+                        <circle cx="12" cy="12" r="12" />
+                      </clipPath>
+                    </defs>
+                    <g clipPath="url(#themeSwatchLight)">
+                      <rect x="0" y="0" width="24" height="24" fill="#6A7282" />
+                      <polygon points="24,0 24,24 0,24" fill="#FFFFFF" />
+                    </g>
+                  </svg>
                 </button>
                 <button
                   type="button"
                   onClick={() => setTheme(THEMES.DARK)}
-                  className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${theme === THEMES.DARK ? "border-blue-500 bg-blue-950 text-blue-300" : "border-gray-300 text-gray-700 hover:bg-gray-100"}`}
+                  aria-label="Thème bleu foncé"
                   aria-pressed={theme === THEMES.DARK}
+                  className={`flex h-14 items-center justify-center rounded-lg border transition-colors ${theme === THEMES.DARK ? "border-blue-500 bg-blue-950" : "border-gray-300 hover:bg-gray-100"}`}
                 >
-                  Thème bleu foncé
+                  <svg viewBox="0 0 24 24" className="size-9">
+                    <defs>
+                      <clipPath id="themeSwatchBlue">
+                        <circle cx="12" cy="12" r="12" />
+                      </clipPath>
+                    </defs>
+                    <g clipPath="url(#themeSwatchBlue)">
+                      <rect x="0" y="0" width="24" height="24" fill="#0F172A" />
+                      <polygon points="24,0 24,24 0,24" fill="#2e4166" />
+                    </g>
+                  </svg>
                 </button>
                 <button
                   type="button"
                   onClick={() => setTheme(THEMES.GRAY)}
-                  className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${theme === THEMES.GRAY ? "border-slate-400 bg-[#3c3c3c] text-slate-100" : "border-gray-300 text-gray-700 hover:bg-gray-100"}`}
+                  aria-label="Thème sombre"
                   aria-pressed={theme === THEMES.GRAY}
+                  className={`flex h-14 items-center justify-center rounded-lg border transition-colors ${theme === THEMES.GRAY ? "border-slate-400 bg-[#3c3c3c]" : "border-gray-300 hover:bg-gray-100"}`}
                 >
-                  Thème sombre
+                  <svg viewBox="0 0 24 24" className="size-9">
+                    <defs>
+                      <clipPath id="themeSwatchGray">
+                        <circle cx="12" cy="12" r="12" />
+                      </clipPath>
+                    </defs>
+                    <g clipPath="url(#themeSwatchGray)">
+                      <rect x="0" y="0" width="24" height="24" fill="#1E1E1E" />
+                      <polygon points="24,0 24,24 0,24" fill="#454547" />
+                    </g>
+                  </svg>
                 </button>
               </div>
             </div>

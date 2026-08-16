@@ -14,6 +14,7 @@ import { JourneyResultsHeader } from "./components/JourneyResultsHeader.jsx";
 import { DisruptionItem } from "./components/DisruptionItem.jsx";
 import { SearchForm } from "./components/SearchSheet.jsx";
 import { NotificationToast } from "./components/NotificationToast.jsx";
+import SplashScreen, { useSplashScreen } from "./components/SplashScreen.jsx";
 import StopPickerMap from "./components/StopPickerMap.jsx";
 import { JourneyMapModal } from "./components/JourneyMapModal.jsx";
 import { JourneyDetailsSheet } from "./components/JourneyDetailsSheet.jsx";
@@ -164,6 +165,14 @@ export default function MesTrajets() {
   const trajetsRef = useRef(trajets);
   const currentTrajetRef = useRef(currentTrajet);
   const autoRefreshingRef = useRef(false);
+
+  // ── Écran de chargement initial ───────────────────────────────────────────
+  // Affiché uniquement au lancement de la PWA (pas en revenant depuis un
+  // autre écran), tant que le premier résultat d'itinéraire du trajet actif
+  // n'est pas revenu (ou immédiatement masqué si aucun trajet n'est
+  // configuré). Logique et rendu délégués à components/SplashScreen.jsx.
+  const { splashVisible, markSplashDone } = useSplashScreen();
+
   useEffect(() => {
     trajetsRef.current = trajets;
   }, [trajets]);
@@ -402,6 +411,11 @@ export default function MesTrajets() {
       if (trajet?.depId && trajet?.arrId) searchById(t, trajet);
     });
 
+    const activeTrajet = cleanedTrajets[activeKey];
+    if (!activeTrajet?.depId || !activeTrajet?.arrId) {
+      markSplashDone();
+    }
+
     setLoadedFromStorage(true);
     localStorage.setItem("tag-express-active-trajet", activeKey);
   }, []);
@@ -519,6 +533,7 @@ export default function MesTrajets() {
         depName = CURRENT_LOCATION_LABEL;
       } catch (err) {
         console.error("searchById: position indisponible", err);
+        if (trajetKey === currentTrajetRef.current) markSplashDone();
         return; // pas de position dispo, on annule cette recherche
       }
     }
@@ -527,7 +542,10 @@ export default function MesTrajets() {
     const arrPosition = findStopPosition(trajet.arrId);
     const depId = fromCoords ? trajet.depId : depPosition?.id || trajet.depId;
     const arrId = arrPosition?.id || trajet.arrId;
-    if (!depId || !arrId) return;
+    if (!depId || !arrId) {
+      if (trajetKey === currentTrajetRef.current) markSplashDone();
+      return;
+    }
 
     depName = depName || depPosition?.name || trajet.depName || trajet.depId;
     const arrName = arrPosition?.name || trajet.arrName || trajet.arrId;
@@ -617,9 +635,11 @@ export default function MesTrajets() {
         setTimeOffset(0);
         setSearchBaseDate(now);
         setSearchTime(formatTimeInputValue(now));
+        markSplashDone();
       }
     } catch (err) {
       console.error("searchById error:", err);
+      if (trajetKey === currentTrajetRef.current) markSplashDone();
     }
   };
 
@@ -1334,6 +1354,8 @@ export default function MesTrajets() {
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <>
+      {splashVisible && <SplashScreen theme={theme} />}
+
       <Navbar
         title="Mes trajets (Test)"
         menuOpen={menuOpen}
