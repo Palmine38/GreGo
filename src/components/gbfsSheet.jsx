@@ -24,6 +24,11 @@ const VOI_VEHICLE_IMAGE = {
 
 const VOI_MAX_RANGE_METERS = 80000;
 
+const BOOKING_URL = {
+  voi: "https://lqfa.adj.st/",
+  citiz: "https://aura.citiz.coop/",
+};
+
 const PROPULSION_LABEL = {
   electric: "Électrique",
   hybrid: "Hybride",
@@ -344,10 +349,63 @@ function PriceCard({ kind, vehicle, plans, loading, error }) {
   );
 }
 
+const VOI_LOGO_COLOR = "#F46C63";
+
+const BOOKING_BUTTON_STYLE = {
+  light: {
+    className: "bg-slate-100 text-slate-900 hover:bg-slate-200",
+  },
+  dark: {
+    className: "bg-slate-800 text-white hover:bg-slate-700",
+  },
+  gray: {
+    className: "bg-zinc-700 text-white hover:bg-zinc-600",
+  },
+};
+
+function BookingButton({ kind, logoSrc, theme }) {
+  const url = BOOKING_URL[kind];
+  if (!url) return null;
+
+  const style = BOOKING_BUTTON_STYLE[theme] || BOOKING_BUTTON_STYLE.light;
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`mt-5 flex items-center justify-center gap-2 w-full rounded-2xl py-3.5 font-semibold text-sm transition-colors ${style.className}`}
+    >
+      <span>Réserver sur</span>
+      {kind === "voi" ? (
+        <span
+          role="img"
+          aria-label={LOGO_LABEL[kind]}
+          className="h-5 w-14 -mt-1"
+          style={{
+            backgroundColor: VOI_LOGO_COLOR,
+            WebkitMaskImage: `url(${logoSrc})`,
+            maskImage: `url(${logoSrc})`,
+            WebkitMaskSize: "contain",
+            maskSize: "contain",
+            WebkitMaskRepeat: "no-repeat",
+            maskRepeat: "no-repeat",
+            WebkitMaskPosition: "center",
+            maskPosition: "center",
+          }}
+        />
+      ) : (
+        <img src={logoSrc} alt={LOGO_LABEL[kind]} className="h-5 w-auto" />
+      )}
+    </a>
+  );
+}
+
 function VehicleDetail({
   vehicle,
   kind,
   logoSrc,
+  theme,
   plans,
   pricingLoading,
   pricingError,
@@ -411,6 +469,8 @@ function VehicleDetail({
           error={pricingError}
         />
       </div>
+
+      <BookingButton kind={kind} logoSrc={logoSrc} theme={theme} />
     </div>
   );
 }
@@ -519,6 +579,7 @@ export function GbfsSheet({ isOpen, onClose, kind, address, vehicles = [] }) {
                   vehicle={selectedVehicle}
                   kind={kind}
                   logoSrc={logoSrc}
+                  theme={theme}
                   plans={plans}
                   pricingLoading={pricingLoading}
                   pricingError={pricingError}

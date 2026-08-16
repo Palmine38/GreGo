@@ -18,7 +18,7 @@ import { FaCar } from "react-icons/fa";
 import { FaLocationPin } from "react-icons/fa6";
 
 const MAPTILER_STYLE_URL_LIGHT =
-  "https://api.maptiler.com/maps/019d0d02-359b-7f4b-a797-bdeabca9dce3/style.json?key=7TQErbyvEqFlis3QMmSl";
+  "https://api.maptiler.com/maps/019f7c76-a3f8-751b-bedb-d7fe9d83d122/style.json?key=7TQErbyvEqFlis3QMmSl";
 const MAPTILER_STYLE_URL_DARK =
   "https://api.maptiler.com/maps/019f7c73-0431-726f-ae5d-598a16a06771/style.json?key=7TQErbyvEqFlis3QMmSl";
 const MAPTILER_STYLE_URL_DARK_BLUE =
