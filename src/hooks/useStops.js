@@ -18,6 +18,7 @@ const NETWORK_PREFIXES = [
 
 let cachedStopsMap = null;
 let cachedStopsList = null;
+let cachedRouteLongNames = null;
 let cachedStopsPromise = null;
 
 async function fetchStops() {
@@ -26,12 +27,22 @@ async function fetchStops() {
   cachedStopsPromise = (async () => {
     const stopsMap = {};
     const stopsList = [];
+    const routeLongNames = {};
 
     try {
       const routesResp = await fetch(
         "https://data.mobilites-m.fr/api/routers/default/index/routes",
       );
       const routes = await routesResp.json();
+      // On garde le longName de chaque ligne au passage : il sert ensuite à
+      // retrouver les vrais terminus d'une ligne (voir selectStopLine dans
+      // fast-research.jsx), sans requête supplémentaire puisque /index/routes
+      // est de toute façon déjà chargé ici.
+      routes.forEach((route) => {
+        if (route?.id) {
+          routeLongNames[String(route.id).toUpperCase()] = route.longName || "";
+        }
+      });
       const networkLines = routes
         .map((route) => route.id)
         .filter((id) =>
@@ -65,6 +76,16 @@ async function fetchStops() {
                 newMap[nameKey].set(positionKey, {
                   id: `${stop.id}::${lat},${lon}`,
                   stopId: stop.id,
+                  // Format "SEM:xxx", utilisé par otpPlaceParam (journey.js)
+                  // pour pointer OTP vers le cluster plutôt qu'une
+                  // plateforme précise en lat/lon.
+                  clusterId: stop.clusterGtfsId
+                    ? `SEM:${stop.clusterGtfsId}`
+                    : null,
+                  // Format "SEM:GENxxx", requis par
+                  // /clusters/{id}/stoptimes (prochains passages) —
+                  // différent du clusterId ci-dessus utilisé par OTP.
+                  stopTimesClusterId: stop.cluster || null,
                   name: stop.name,
                   city: stop.city || stop.locality || stop.municipality,
                   lat: stop.lat,
@@ -76,6 +97,11 @@ async function fetchStops() {
 
               list.push({
                 id: stop.id,
+                stopId: stop.id,
+                clusterId: stop.clusterGtfsId
+                  ? `SEM:${stop.clusterGtfsId}`
+                  : null,
+                stopTimesClusterId: stop.cluster || null,
                 code: stop.code,
                 name: stop.name,
                 city: stop.city || stop.locality || stop.municipality,
@@ -118,12 +144,18 @@ async function fetchStops() {
 
       cachedStopsMap = finalMap;
       cachedStopsList = [...stopsByName.values()];
+      cachedRouteLongNames = routeLongNames;
     } catch {
       cachedStopsMap = {};
       cachedStopsList = [];
+      cachedRouteLongNames = {};
     }
 
-    return { stopsMap: cachedStopsMap, stopsList: cachedStopsList };
+    return {
+      stopsMap: cachedStopsMap,
+      stopsList: cachedStopsList,
+      routeLongNames: cachedRouteLongNames,
+    };
   })();
 
   return cachedStopsPromise;
@@ -137,21 +169,26 @@ export function useStops() {
   // name -> [{ id, stopId, name, lat, lon, code, lines }, ...]
   const [stopsMap, setStopsMap] = useState(cachedStopsMap || {});
   const [stopsList, setStopsList] = useState(cachedStopsList || []);
+  const [routeLongNames, setRouteLongNames] = useState(
+    cachedRouteLongNames || {},
+  );
   const [stopsLoaded, setStopsLoaded] = useState(!!cachedStopsMap);
 
   useEffect(() => {
     if (cachedStopsMap) {
       setStopsMap(cachedStopsMap);
       setStopsList(cachedStopsList);
+      setRouteLongNames(cachedRouteLongNames);
       setStopsLoaded(true);
       return;
     }
 
     let active = true;
-    fetchStops().then(({ stopsMap, stopsList }) => {
+    fetchStops().then(({ stopsMap, stopsList, routeLongNames }) => {
       if (!active) return;
       setStopsMap(stopsMap);
       setStopsList(stopsList);
+      setRouteLongNames(routeLongNames);
       setStopsLoaded(true);
     });
 
@@ -205,5 +242,18 @@ export function useStops() {
       .map((k) => stopsMap[k][0].name);
   };
 
-  return { stopsMap, stopsList, stopsLoaded, findStop, suggestionsFor };
+  // Longname complet d'une ligne (ex. "Fontanil-Cornillon Palluel / Grenoble
+  // Louise Michel" pour SEM:E), utilisé pour en extraire les vrais terminus.
+  const getRouteLongName = (routeId) =>
+    routeLongNames[String(routeId || "").toUpperCase()] || "";
+
+  return {
+    stopsMap,
+    stopsList,
+    stopsLoaded,
+    findStop,
+    suggestionsFor,
+    routeLongNames,
+    getRouteLongName,
+  };
 }

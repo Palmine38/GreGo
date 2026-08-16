@@ -826,7 +826,242 @@ export function InlineJourneyMap({
 }
 
 /**
- * Panneau glissant affichant le détail d'un trajet.
+ * Contenu du détail d'un trajet, SANS le Sheet englobant.
+ *
+ * Exporté séparément de JourneyDetailsSheet pour pouvoir être intégré
+ * directement dans une autre sheet (ex. FastResearchResultSheet) avec une
+ * animation de swipe droite→gauche façon vue "liste → détail" (voir
+ * GbfsSheet), plutôt que d'ouvrir une nouvelle Sheet par-dessus.
+ *
+ * Props :
+ *   journey        — itinéraire sélectionné (ou null)
+ *   lineColors     — map couleurs
+ *   getLineDisruptions — fn(lineName) → []
+ *   hideMap        — bool, masque le bouton/la carte inline
+ *   onLineClick    — fn(lineKey, currentSnap)
+ *   currentSnap    — snap courant de la sheet englobante (optionnel, transmis à onLineClick)
+ *   onBack         — si fourni, une flèche retour apparaît en haut à la place du simple label
+ */
+export function JourneyDetailsContent({
+  journey,
+  lineColors,
+  getLineDisruptions,
+  hideMap = false,
+  onLineClick,
+  currentSnap,
+  onBack,
+}) {
+  const currentTime = useCurrentTime();
+  const { settings } = useSettings();
+  const [height, setHeight] = useState(60);
+  const [mapOpen, setMapOpen] = useState(false);
+  // const [tripStarted, setTripStarted] = useState(false); // bouton "Lancer le trajet" désactivé
+
+  // Reset quand un nouveau trajet est sélectionné
+  useEffect(() => {
+    if (journey) {
+      setHeight(60);
+      setMapOpen(false);
+      // setTripStarted(false); // bouton "Lancer le trajet" désactivé
+    }
+  }, [journey]);
+
+  const handleToggleMap = () => {
+    setMapOpen((prev) => !prev);
+    // Agrandir légèrement la sheet si elle est petite pour laisser de la place à la carte
+    if (!mapOpen && height < 80) setHeight(85);
+  };
+
+  if (!journey) return null;
+
+  return (
+    <div className="overflow-y-auto flex-1 px-4 pb-4">
+      <div className="mb-2">
+        {onBack ? (
+          <div className="flex items-center gap-2 -ml-2 mb-1">
+            <button
+              type="button"
+              onClick={onBack}
+              aria-label="Retour"
+              className="w-9 h-9 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors flex-shrink-0"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                className="w-5 h-5 text-gray-700"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15 19l-7-7 7-7"
+                />
+              </svg>
+            </button>
+            <p className="text-xs uppercase tracking-widest text-slate-400">
+              Détails du trajet
+            </p>
+          </div>
+        ) : (
+          <p className="text-xs uppercase tracking-widest text-slate-400">
+            Détails du trajet
+          </p>
+        )}
+        <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+          <span>{journey.depName}</span>
+          <ArrowIcon />
+          <span>{journey.arrName}</span>
+        </h2>
+        <p className="text-sm text-slate-600 mt-1">{journey.direction}</p>
+      </div>
+      {/* Lignes du trajet */}
+      {journey.lineKeys?.length > 0 && (
+        <div className="flex items-center gap-2 mb-4 mt-4 flex-wrap">
+          {journey.lineKeys.map((lk) =>
+            getLineDisruptions(lk)?.length > 0 ? (
+              <button
+                key={lk}
+                className="relative"
+                onClick={() => onLineClick?.(lk, currentSnap)}
+              >
+                <LineIcon lineKey={lk} size="w-8 h-8" />
+                <span
+                  className="absolute -bottom-1 -right-0.5"
+                  style={{ color: "#e61e1e" }}
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 16 16"
+                    fill="currentColor"
+                    className="size-3.5"
+                  >
+                    <path d="M8 3.5 3 12.5h10L8 3.5Z" fill="white" />
+                    <path
+                      fillRule="evenodd"
+                      d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </span>
+              </button>
+            ) : (
+              <div key={lk}>
+                <LineIcon lineKey={lk} size="w-8 h-8" />
+              </div>
+            ),
+          )}
+        </div>
+      )}
+
+      <div className="flex items-center gap-4 mb-6 p-3 rounded-2xl">
+        <div>
+          <p className="text-xl font-bold">{journey.dep}</p>
+          <p className="text-xs text-slate-600">
+            {formatTimeUntil(journey.dep, currentTime)}
+          </p>
+        </div>
+        <div className="flex-1 border-t border-dashed border-slate-500" />
+        <p className="text-sm text-slate-600">{journey.dur}</p>
+        <div className="flex-1 border-t border-dashed border-slate-500" />
+        <div className="text-right">
+          <p className="text-xl font-bold">{journey.arr}</p>
+        </div>
+      </div>
+
+      {/* Bouton "Lancer le trajet" / panneau de navigation — désactivé
+      {tripStarted ? (
+        <JourneyNavigationPanel
+          journey={journey}
+          currentTime={currentTime}
+          onStop={() => setTripStarted(false)}
+        />
+      ) : (
+        <JourneyStartPanel
+          onStart={() => {
+            setTripStarted(true);
+            if (height < 80) setHeight(85);
+          }}
+        />
+      )}
+      */}
+
+      {!hideMap && (
+        <>
+          <button
+            onClick={handleToggleMap}
+            className="flex flex-shrink-0 items-center gap-1.5 text-xs font-semibold mb-7 transition-colors"
+            style={{ color: mapOpen ? "#3B82F6" : "#3B82F6" }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+              stroke="currentColor"
+              className="w-4 h-4"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M9 6.75V15m6-6v8.25m.503 3.498 4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 0 0-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c-.317-.159.69-.159 1.006 0l4.994 2.497c.317.159.69.159 1.006 0Z"
+              />
+            </svg>
+
+            {mapOpen ? "Masquer la carte" : "Voir sur la carte"}
+
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              className="w-3.5 h-3.5 ml-0.5"
+              style={{
+                transform: mapOpen ? "rotate(180deg)" : "rotate(0deg)",
+                transition: "transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)",
+              }}
+            >
+              <path
+                fillRule="evenodd"
+                d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
+          {/* Carte inline*/}
+          <div className="flex-shrink-0 px-4">
+            <InlineJourneyMap
+              journey={journey}
+              lineColors={lineColors}
+              isOpen={mapOpen}
+              showIntermediateStops={settings.showIntermediateStops}
+            />
+          </div>
+        </>
+      )}
+
+      <JourneyTimeline
+        journey={journey}
+        lineColors={lineColors}
+        getLineDisruptions={getLineDisruptions}
+        showDisruptions={settings.showJourneyDisruptions}
+        showIntermediateStops={settings.showIntermediateStops}
+        onOpenMap={hideMap ? undefined : handleToggleMap}
+        mapOpen={!hideMap && mapOpen}
+      />
+
+      <div style={{ height: "30vh" }} />
+    </div>
+  );
+}
+
+/**
+ * Panneau glissant affichant le détail d'un trajet, dans sa propre Sheet.
+ *
+ * Reste utilisé tel quel partout où le détail doit s'ouvrir en tant que
+ * sheet indépendante. Pour une intégration "swipe" au sein d'une autre
+ * sheet (sans en ouvrir une nouvelle), utiliser JourneyDetailsContent
+ * directement (voir FastResearchResultSheet).
  *
  * Props :
  *   journey        — itinéraire sélectionné (ou null)
@@ -847,208 +1082,38 @@ export function JourneyDetailsSheet({
   initialSnap = 1,
   onLineClick,
 }) {
-  const currentTime = useCurrentTime();
-  const { settings } = useSettings();
-  const [height, setHeight] = useState(60);
-  const [mapOpen, setMapOpen] = useState(false);
-  // const [tripStarted, setTripStarted] = useState(false); // bouton "Lancer le trajet" désactivé
   const [currentSnap, setCurrentSnap] = useState(initialSnap);
-  const scrollRef = useRef(null);
-
-  // Reset quand un nouveau trajet est sélectionné
-  useEffect(() => {
-    if (journey) {
-      setHeight(60);
-      setMapOpen(false);
-      // setTripStarted(false); // bouton "Lancer le trajet" désactivé
-      setCurrentSnap(initialSnap);
-    }
-  }, [journey]);
-
-  const handleToggleMap = () => {
-    setMapOpen((prev) => !prev);
-    // Agrandir légèrement la sheet si elle est petite pour laisser de la place à la carte
-    if (!mapOpen && height < 80) setHeight(85);
-  };
 
   if (!journey) return null;
 
   return (
-    <>
-      <Sheet
-        isOpen={isOpen}
-        onClose={onClose}
-        snapPoints={snapPoints}
-        initialSnap={initialSnap}
-        onSnap={(snapIndex) => setCurrentSnap(snapIndex)}
+    <Sheet
+      isOpen={isOpen}
+      onClose={onClose}
+      snapPoints={snapPoints}
+      initialSnap={initialSnap}
+      onSnap={(snapIndex) => setCurrentSnap(snapIndex)}
+    >
+      <Sheet.Container
+        style={{
+          borderRadius: "24px 24px 0 0",
+          backgroundColor: "var(--sheet-bg)",
+          overflow: "hidden",
+        }}
       >
-        <Sheet.Container
-          style={{
-            borderRadius: "24px 24px 0 0",
-            backgroundColor: "var(--sheet-bg)",
-            overflow: "hidden",
-          }}
-        >
-          <Sheet.Header />
-          <Sheet.Content
-            disableDrag={(state) => state.scrollPosition !== "top"}
-          >
-            {/* Contenu scrollable */}
-            <div ref={scrollRef} className="overflow-y-auto flex-1 px-4 pb-4">
-              <div className="mb-2">
-                <p className="text-xs uppercase tracking-widest text-slate-400">
-                  Détails du trajet
-                </p>
-                <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-                  <span>{journey.depName}</span>
-                  <ArrowIcon />
-                  <span>{journey.arrName}</span>
-                </h2>
-                <p className="text-sm text-slate-600 mt-1">
-                  {journey.direction}
-                </p>
-              </div>
-              {/* Lignes du trajet */}
-              {journey.lineKeys?.length > 0 && (
-                <div className="flex items-center gap-2 mb-4 mt-4 flex-wrap">
-                  {journey.lineKeys.map((lk) =>
-                    getLineDisruptions(lk)?.length > 0 ? (
-                      <button
-                        key={lk}
-                        className="relative"
-                        onClick={() => onLineClick?.(lk, currentSnap)}
-                      >
-                        <LineIcon lineKey={lk} size="w-8 h-8" />
-                        <span
-                          className="absolute -bottom-1 -right-0.5"
-                          style={{ color: "#e61e1e" }}
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 16 16"
-                            fill="currentColor"
-                            className="size-3.5"
-                          >
-                            <path d="M8 3.5 3 12.5h10L8 3.5Z" fill="white" />
-                            <path
-                              fillRule="evenodd"
-                              d="M8 15A7 7 0 1 0 8 1a7 7 0 0 0 0 14ZM8 4a.75.75 0 0 1 .75.75v3a.75.75 0 0 1-1.5 0v-3A.75.75 0 0 1 8 4Zm0 8a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </span>
-                      </button>
-                    ) : (
-                      <div key={lk}>
-                        <LineIcon lineKey={lk} size="w-8 h-8" />
-                      </div>
-                    ),
-                  )}
-                </div>
-              )}
-
-              <div className="flex items-center gap-4 mb-6 p-3 rounded-2xl">
-                <div>
-                  <p className="text-xl font-bold">{journey.dep}</p>
-                  <p className="text-xs text-slate-600">
-                    {formatTimeUntil(journey.dep, currentTime)}
-                  </p>
-                </div>
-                <div className="flex-1 border-t border-dashed border-slate-500" />
-                <p className="text-sm text-slate-600">{journey.dur}</p>
-                <div className="flex-1 border-t border-dashed border-slate-500" />
-                <div className="text-right">
-                  <p className="text-xl font-bold">{journey.arr}</p>
-                </div>
-              </div>
-
-              {/* Bouton "Lancer le trajet" / panneau de navigation — désactivé
-              {tripStarted ? (
-                <JourneyNavigationPanel
-                  journey={journey}
-                  currentTime={currentTime}
-                  onStop={() => setTripStarted(false)}
-                />
-              ) : (
-                <JourneyStartPanel
-                  onStart={() => {
-                    setTripStarted(true);
-                    if (height < 80) setHeight(85);
-                  }}
-                />
-              )}
-              */}
-
-              {!hideMap && (
-                <>
-                  <button
-                    onClick={handleToggleMap}
-                    className="flex flex-shrink-0 items-center gap-1.5 text-xs font-semibold mb-7 transition-colors"
-                    style={{ color: mapOpen ? "#3B82F6" : "#3B82F6" }}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      strokeWidth={1.5}
-                      stroke="currentColor"
-                      className="w-4 h-4"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M9 6.75V15m6-6v8.25m.503 3.498 4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 0 0-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c-.317-.159.69-.159 1.006 0l4.994 2.497c.317.159.69.159 1.006 0Z"
-                      />
-                    </svg>
-
-                    {mapOpen ? "Masquer la carte" : "Voir sur la carte"}
-
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      viewBox="0 0 20 20"
-                      fill="currentColor"
-                      className="w-3.5 h-3.5 ml-0.5"
-                      style={{
-                        transform: mapOpen ? "rotate(180deg)" : "rotate(0deg)",
-                        transition:
-                          "transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)",
-                      }}
-                    >
-                      <path
-                        fillRule="evenodd"
-                        d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z"
-                        clipRule="evenodd"
-                      />
-                    </svg>
-                  </button>
-                  {/* Carte inline*/}
-                  <div className="flex-shrink-0 px-4">
-                    <InlineJourneyMap
-                      journey={journey}
-                      lineColors={lineColors}
-                      isOpen={mapOpen}
-                      showIntermediateStops={settings.showIntermediateStops}
-                    />
-                  </div>
-                </>
-              )}
-
-              <JourneyTimeline
-                journey={journey}
-                lineColors={lineColors}
-                getLineDisruptions={getLineDisruptions}
-                showDisruptions={settings.showJourneyDisruptions}
-                showIntermediateStops={settings.showIntermediateStops}
-                onOpenMap={hideMap ? undefined : handleToggleMap}
-                mapOpen={!hideMap && mapOpen}
-              />
-
-              <div style={{ height: "30vh" }} />
-            </div>
-          </Sheet.Content>
-        </Sheet.Container>
-        {!hideBackdrop && <Sheet.Backdrop onTap={onClose} />}
-      </Sheet>
-    </>
+        <Sheet.Header />
+        <Sheet.Content disableDrag={(state) => state.scrollPosition !== "top"}>
+          <JourneyDetailsContent
+            journey={journey}
+            lineColors={lineColors}
+            getLineDisruptions={getLineDisruptions}
+            hideMap={hideMap}
+            onLineClick={onLineClick}
+            currentSnap={currentSnap}
+          />
+        </Sheet.Content>
+      </Sheet.Container>
+      {!hideBackdrop && <Sheet.Backdrop onTap={onClose} />}
+    </Sheet>
   );
 }

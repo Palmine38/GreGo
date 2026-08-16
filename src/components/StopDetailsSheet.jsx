@@ -250,13 +250,13 @@ export function StopDetailsSheet({
   const autoSelectedStopId = useRef(null);
 
   useEffect(() => {
-    if (!isOpen || !stop?.stopId) return undefined;
+    if (!isOpen || !stop?.stopTimesClusterId) return undefined;
     let cancelled = false;
     setLoading(true);
     setRawPayload(null);
 
     fetch(
-      `https://data.mobilites-m.fr/api/routers/default/index/stops/${stop.stopId}/stoptimes`,
+      `https://data.mobilites-m.fr/api/routers/default/index/clusters/${stop.stopTimesClusterId}/stoptimes`,
     )
       .then((res) => (res.ok ? res.json() : Promise.reject()))
       .then((data) => {
@@ -272,7 +272,7 @@ export function StopDetailsSheet({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, stop?.stopId]);
+  }, [isOpen, stop?.stopTimesClusterId]);
 
   const apiLines = useMemo(
     () => (rawPayload ? linesFromStopTimes(rawPayload) : []),
@@ -316,7 +316,7 @@ export function StopDetailsSheet({
       isOpen={isOpen}
       onClose={onClose}
       snapPoints={[0, 0.35, 0.72, 1]}
-      initialSnap={1}
+      initialSnap={2}
     >
       <Sheet.Container
         style={{ borderRadius: "24px 24px 0 0", overflow: "hidden" }}

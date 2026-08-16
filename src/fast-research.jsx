@@ -5,12 +5,8 @@ import { useStops } from "./hooks/useStops.js";
 import { useDisruptions } from "./hooks/useDisruptions.js";
 import { useLineColors } from "./hooks/useLineColors.js";
 import { useSettings } from "./hooks/useSettings.js";
-import { JourneyCard } from "./components/JourneyCard.jsx";
-import {
-  JourneyDetailsSheet,
-  getLegGeometry,
-} from "./components/JourneyDetailsSheet.jsx";
-import { JourneyResultsHeader } from "./components/JourneyResultsHeader.jsx";
+import { getLegGeometry } from "./components/JourneyDetailsSheet.jsx";
+import { FastResearchResultSheet } from "./components/FastResearchResultSheet.jsx";
 import { LineInfoSheet } from "./components/LineInfoSheet.jsx";
 import { NotificationToast } from "./components/NotificationToast.jsx";
 import StopPickerMap from "./components/StopPickerMap.jsx";
@@ -96,8 +92,14 @@ function getTransitLegForLine(plan, lineName) {
 export default function FastResearch() {
   // ── Hooks partagés ────────────────────────────────────────────────────────
   const currentTime = useCurrentTime();
-  const { stopsMap, stopsList, stopsLoaded, findStop, suggestionsFor } =
-    useStops();
+  const {
+    stopsMap,
+    stopsList,
+    stopsLoaded,
+    findStop,
+    suggestionsFor,
+    getRouteLongName,
+  } = useStops();
   const { disruptionsRaw, isLineDisrupted, getLineDisruptions } =
     useDisruptions();
   const { lineColors } = useLineColors();
@@ -138,7 +140,9 @@ export default function FastResearch() {
         }
       }
     }
-    return idOrName;
+    // Valeurs formatées "Label::lat,lon" (adresse libre ou position GPS déjà
+    // résolue, ex. "Votre position::45.23,5.68") : on n'affiche que le label.
+    return idOrName.split("::")[0];
   };
 
   const findPositionForValue = (value, preferredLine) => {
@@ -225,8 +229,8 @@ export default function FastResearch() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // ── Journey details ───────────────────────────────────────────────────────
-  const [selectedJourney, setSelectedJourney] = useState(null);
+  // ── Résultats de recherche (liste de JourneyCard cliquables) ─────────────
+  const [resultsSheetOpen, setResultsSheetOpen] = useState(false);
 
   // ── Line info sheet ───────────────────────────────────────────────────────
   const [selectedLineInfo, setSelectedLineInfo] = useState(null);
@@ -283,7 +287,6 @@ export default function FastResearch() {
           setSearchTime(
             parsed.searchTime || formatTimeInputValue(cachedBaseDate),
           );
-          setQuickSearch(parsed.arr.split("::")[0]);
           return;
         }
         sessionStorage.removeItem(CACHE_KEY);
@@ -415,14 +418,10 @@ export default function FastResearch() {
             : "",
       );
       setResults(finalResults);
-      if (openDetails && finalResults[0]) {
-        setSelectedJourney({
-          ...finalResults[0],
-          depName: resolveDisplayName(finalResults[0].depName),
-          arrName: resolveDisplayName(finalResults[0].arrName),
-          rawDep: depValue,
-          rawArr: arrValue,
-        });
+      if (openDetails && finalResults.length > 0) {
+        // On ouvre la liste des résultats plutôt que le détail directement,
+        // pour laisser l'utilisateur choisir le trajet.
+        setResultsSheetOpen(true);
       }
       setTimeOffset(offset);
       setSearchBaseDate(anchorTime);
@@ -474,20 +473,34 @@ export default function FastResearch() {
     if (depRef.current && arrRef.current) search(0);
   };
 
+  // Enrichit le résultat cliqué (noms résolus, valeurs brutes de recherche
+  // nécessaires à JourneyTimeline) et le renvoie à FastResearchResultSheet,
+  // qui affiche le détail par-dessus la liste (swipe interne) plutôt que
+  // d'ouvrir une nouvelle sheet.
   const openJourneyDetails = (item) => {
-    setSelectedJourney({
+    // Le tracé affiché en fond de carte doit correspondre au trajet
+    // effectivement sélectionné, pas juste au premier résultat.
+    setOtpJourney(item);
+    setMenuOpen(false);
+    setInputsOpen(false);
+    return {
       ...item,
       depName: resolveDisplayName(item.depName),
       arrName: resolveDisplayName(item.arrName),
       rawDep: dep,
       rawArr: arr,
-    });
-    setMenuOpen(false);
-    setInputsOpen(false);
+    };
   };
 
-  const closeJourneyDetails = () => {
-    setSelectedJourney(null);
+  // Appelée quand on revient de la vue détail à la liste (bouton retour) :
+  // le tracé du trajet sélectionné ne doit plus s'afficher.
+  const backFromJourneyDetails = () => {
+    setOtpJourney(null);
+  };
+
+  const closeResultsSheet = () => {
+    setResultsSheetOpen(false);
+    setOtpJourney(null);
   };
 
   const closeLineInfo = () => {
@@ -505,7 +518,8 @@ export default function FastResearch() {
     setError("");
     setInputsOpen(true);
     setMenuOpen(false);
-    setSelectedJourney(null);
+    setResultsSheetOpen(false);
+    setOtpJourney(null);
     sessionStorage.removeItem(CACHE_KEY);
   };
 
@@ -564,30 +578,131 @@ export default function FastResearch() {
         : [],
     );
     setActiveStopLineStops([]);
-    // Les clusters d'une ligne sont déjà ordonnés selon son parcours : ils
-    // constituent un repli fiable lorsque la géométrie détaillée n'est pas fournie.
+    // Les poteaux (stops) d'une ligne sont déjà ordonnés selon son parcours :
+    // ils constituent un repli fiable lorsque la géométrie détaillée n'est pas fournie.
     try {
       const response = await fetch(
-        `https://data.mobilites-m.fr/api/routers/default/index/routes/${apiRouteIdEncoded}/clusters`,
+        `https://data.mobilites-m.fr/api/routers/default/index/routes/${apiRouteIdEncoded}/stops`,
       );
       if (!response.ok) throw new Error("Unable to load line stops");
-      const clusters = await response.json();
-      const lineStops = (Array.isArray(clusters) ? clusters : [])
-        .map((cluster) => ({
-          name: cluster.name,
-          clusterId: cluster.id,
-          lon: Number(cluster.lon),
-          lat: Number(cluster.lat),
+      const stops = await response.json();
+      const lineStops = (Array.isArray(stops) ? stops : [])
+        .map((stop) => ({
+          name: stop.name,
+          stopId: stop.id,
+          // Format "SEM:GENxxx", requis par /clusters/{id}/stoptimes
+          // (prochains passages, voir StopDetailsSheet.jsx).
+          stopTimesClusterId: stop.cluster || null,
+          // OTP attend un identifiant de cluster différent, au format
+          // "SEM:xxx" (sans le "GEN"), reconstruit ici à partir de
+          // clusterGtfsId pour garder le fallback OTP fonctionnel (voir
+          // plus bas) — même convention que useStops.js.
+          clusterId: stop.clusterGtfsId ? `SEM:${stop.clusterGtfsId}` : null,
+          lon: Number(stop.lon),
+          lat: Number(stop.lat),
         }))
         .filter(
-          (cluster) =>
-            Number.isFinite(cluster.lon) && Number.isFinite(cluster.lat),
+          (stop) => Number.isFinite(stop.lon) && Number.isFinite(stop.lat),
         );
       if (requestId !== stopLineRequestRef.current) return;
-      setActiveStopLineStops(lineStops);
 
-      const firstStop = lineStops[0];
-      const lastStop = lineStops[lineStops.length - 1];
+      // /index/routes/{id}/stops renvoie l'ensemble des arrêts desservis par
+      // la ligne, dans l'ordre du trajet — MAIS la course continue parfois
+      // au-delà du vrai terminus commercial (repli/sortie dépôt). Ex. ligne E :
+      // après "Palluel" (vrai terminus), le véhicule continue jusqu'à
+      // "Foch-Ferrié" pour rejoindre le dépôt, alors que ce n'est plus un
+      // arrêt voyageurs. Prendre lineStops[0]/[length-1] peut donc pointer
+      // sur ces arrêts techniques et fausser le tracé retourné par /plan.
+      //
+      // /index/routes/{id}/patterns n'existe pas sur cette instance OTP
+      // (404), et l'essai via /index/stops/{code}/patterns n'a pas donné de
+      // résultat exploitable non plus. On récupère donc les vrais terminus
+      // autrement : le "longName" de la route (ex. pour SEM:E :
+      // "Fontanil-Cornillon Palluel / Grenoble Louise Michel") est composé de
+      // "Commune NomDuTerminus" pour chaque sens, séparés par un "/". En
+      // retirant le préfixe "Commune " de chaque partie, il reste exactement
+      // le nom de l'arrêt terminus (ex. "Palluel", "Louise Michel") — on
+      // retrouve alors l'arrêt correspondant dans la liste des arrêts de la
+      // ligne par correspondance de suffixe (le nom de la commune pouvant
+      // compter plusieurs mots, ex. "Fontanil-Cornillon", on ne peut pas se
+      // contenter de retirer le premier mot).
+      const normalizeName = (value) =>
+        String(value || "")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, " ")
+          .trim();
+
+      let firstStop = lineStops[0];
+      let lastStop = lineStops[lineStops.length - 1];
+      try {
+        // /index/routes/{id}/patterns et /index/routes/{id} (route unique)
+        // n'existent pas sur cette instance OTP (404). /index/routes (liste
+        // complète) est de toute façon déjà chargé par useStops() pour
+        // construire la liste des arrêts : on réutilise directement son
+        // cache de longName via getRouteLongName, sans requête réseau ici.
+        const longName = getRouteLongName(apiRouteId);
+        const [rawA, rawB] = longName.split("/").map((s) => (s || "").trim());
+
+        if (rawA && rawB) {
+          const normA = normalizeName(rawA);
+          const normB = normalizeName(rawB);
+
+          // Cherche, parmi les arrêts de la ligne, celui dont le nom est un
+          // suffixe de la partie du longName (donc précédé uniquement du nom
+          // de commune). En cas d'ambiguïté on garde la correspondance la
+          // plus longue (la plus spécifique).
+          const findStopForLabel = (normLabel) => {
+            let best = null;
+            let bestLen = -1;
+            for (const s of lineStops) {
+              const normStopName = normalizeName(s.name);
+              if (
+                normStopName &&
+                normLabel.endsWith(normStopName) &&
+                normStopName.length > bestLen
+              ) {
+                best = s;
+                bestLen = normStopName.length;
+              }
+            }
+            return best;
+          };
+
+          const stopA = findStopForLabel(normA);
+          const stopB = findStopForLabel(normB);
+          if (stopA && stopB) {
+            firstStop = stopA;
+            lastStop = stopB;
+          }
+        }
+      } catch (err) {
+        console.error(
+          "[selectStopLine] Error resolving line termini from longName",
+          err,
+        );
+        // Repli sur firstStop/lastStop calculés depuis /routes/{id}/stops
+        // (mieux que rien, même si potentiellement faux).
+      }
+
+      // lineStops est ordonné selon le parcours réel (voir plus haut), donc
+      // une fois les deux vrais terminus identifiés on peut en déduire les
+      // index de début/fin et ne garder que les arrêts entre les deux
+      // (départ, intermédiaires, arrivée) — le tracé va d'un terminus à
+      // l'autre, pas jusqu'aux arrêts techniques de dépôt qui suivent
+      // parfois le terminus dans la liste brute.
+      let routeLineStops = lineStops;
+      const startIdx = lineStops.indexOf(firstStop);
+      const endIdx = lineStops.indexOf(lastStop);
+      if (startIdx !== -1 && endIdx !== -1 && startIdx !== endIdx) {
+        const lo = Math.min(startIdx, endIdx);
+        const hi = Math.max(startIdx, endIdx);
+        routeLineStops = lineStops.slice(lo, hi + 1);
+      }
+      if (requestId !== stopLineRequestRef.current) return;
+      setActiveStopLineStops(routeLineStops);
+
       let geometry = displayedJourneyGeometry;
       if (
         !isUsableLineGeometry(geometry) &&
@@ -651,7 +766,7 @@ export default function FastResearch() {
       }
 
       if (requestId !== stopLineRequestRef.current) return;
-      const stopFallback = lineStops.map((cluster) => [
+      const stopFallback = routeLineStops.map((cluster) => [
         cluster.lon,
         cluster.lat,
       ]);
@@ -908,110 +1023,29 @@ export default function FastResearch() {
       </div>
 
       <div className="min-h-screen relative bg-transparent pb-28">
-        {/* Fast Research reste volontairement une vue carte : les résultats
-            servent au calcul du tracé mais ne sont pas affichés au centre. */}
-        <div className="hidden">
-          {results.length > 0 && (
-            <JourneyResultsHeader
-              dep={resolveDisplayName(dep)}
-              arr={resolveDisplayName(arr)}
-              results={results}
-              searchBaseDate={searchBaseDate}
-              timeOffset={timeOffset}
-              loading={loading}
-              showRefreshCheck={showRefreshCheck}
-              isLineDisrupted={isLineDisrupted}
-              onLineClick={(lk) => setSelectedLineInfo(lk)}
-              onRefresh={handleRefresh}
-            />
-          )}
+        {/* Fast Research reste volontairement une vue carte : la carte reste
+            visible derrière la liste de résultats et le détail du trajet. */}
 
-          {/* Liste des résultats */}
-          <div className="space-y-2">
-            {visibleResults.length === 0 ? (
-              <div className="p-4 text-center text-gray-500">
-                {loading ? "Recherche en cours..." : null}
-              </div>
-            ) : (
-              visibleResults.map((item, idx) => (
-                <JourneyCard
-                  key={idx}
-                  item={item}
-                  currentTime={currentTime}
-                  isLineDisrupted={isLineDisrupted}
-                  onClick={() => openJourneyDetails(item)}
-                />
-              ))
-            )}
-          </div>
-
-          {/* Navigation temporelle */}
-          <div
-            className={`mt-4 flex items-center gap-2 ${results.length > 0 && timeOffset >= 0 ? "justify-between" : "justify-end"}`}
-          >
-            {timeOffset >= 0 && results.length > 0 && (
-              <button
-                className="px-2 py-1 text-sm font-semibold text-black hover:text-gray-700"
-                onClick={() => search(timeOffset - 0.5)}
-                disabled={loading}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                  className="size-4 scale-x-[-1]"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"
-                  />
-                </svg>
-              </button>
-            )}
-            {results.length > 0 && (
-              <button
-                className="px-2 py-1 text-sm font-semibold text-black hover:text-gray-700"
-                onClick={() => search(timeOffset + 0.5)}
-                disabled={loading}
-              >
-                rechercher pour {afterLabel}
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  strokeWidth={1.5}
-                  stroke="currentColor"
-                  className="size-4 inline ml-1"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3"
-                  />
-                </svg>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Panneau détails trajet */}
-        <JourneyDetailsSheet
-          journey={selectedJourney}
-          isOpen={!!selectedJourney}
-          onClose={closeJourneyDetails}
+        {/* Panneau liste des résultats + détail du trajet (swipe interne,
+            pas de sheet séparée) */}
+        <FastResearchResultSheet
+          results={visibleResults}
+          isOpen={resultsSheetOpen}
+          onClose={closeResultsSheet}
+          currentTime={currentTime}
+          isLineDisrupted={isLineDisrupted}
+          dep={resolveDisplayName(dep)}
+          arr={resolveDisplayName(arr)}
+          timeOffset={timeOffset}
+          loading={loading}
+          onSelectJourney={openJourneyDetails}
+          onBackFromJourney={backFromJourneyDetails}
+          onSearchOffset={(offset) => search(offset)}
+          afterLabel={afterLabel}
           lineColors={lineColors}
           getLineDisruptions={getLineDisruptions}
-          hideBackdrop
           hideMap
-          snapPoints={[0, 0.3, 0.6, 1]}
-          initialSnap={1}
-          onLineClick={(lk) => {
-            setSelectedLineInfo(lk);
-            requestAnimationFrame(() => setLineInfoOpen(true));
-          }}
+          onLineClick={(lk) => setSelectedLineInfo(lk)}
         />
 
         {/* Panneau infotrafic ligne */}
@@ -1067,7 +1101,14 @@ export default function FastResearch() {
           stops={stopsList}
           target="arr"
           embedded
-          journey={otpJourney}
+          journey={
+            // Le tracé ne doit être visible que tant que la sheet (liste ou
+            // détail du trajet, qui vivent désormais toutes deux sous
+            // resultsSheetOpen) est ouverte. Sans ce garde, le rafraîchissement
+            // automatique (toutes les 2 min) ou un simple handleRefresh
+            // réaffiche le tracé même sheet fermée.
+            resultsSheetOpen ? otpJourney : null
+          }
           lineColors={lineColors}
           voiVehicles={voiVehicles}
           citizStations={citizStations}
