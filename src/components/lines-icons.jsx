@@ -1,5 +1,6 @@
 ﻿/* @refresh reset */
 import React, { useEffect, useState } from "react";
+import { getAllLines, buildLineLookup } from "../utils/allLines.js";
 
 export const LINE_COLORS = {
   C11: "#EF7C00",
@@ -20,45 +21,44 @@ export const LINE_COLORS = {
 };
 
 const lineDataCache = new Map();
-let routesPromise = null;
-let routesCache = null;
 
-const makeLineData = (route, effectiveKey, cacheKey) => ({
-  shortName: route?.shortName || effectiveKey,
-  color:
-    LINE_COLORS[cacheKey] || (route?.color ? `#${route.color}` : "#94A3B8"),
-  type: route?.type || "",
+// La résolution "route -> couleur/nom" vient désormais d'un seul catalogue
+// partagé (utils/allLines.js), qui désambiguïse les codes partagés entre
+// réseaux (C1/C6/C11 existent à la fois côté SEM/SE2 et côté TER "SNC").
+// L'ancien `routesCache.find(...)` d'ici prenait le premier match dans
+// l'ordre de réponse de l'API, ce qui pouvait résoudre "C1" vers le mauvais
+// réseau selon les jours.
+let lineLookupPromise = null;
+let lineLookupCache = null;
+
+const makeLineData = (line, effectiveKey, cacheKey) => ({
+  shortName: line?.shortName || effectiveKey,
+  color: LINE_COLORS[cacheKey] || line?.color || "#94A3B8",
+  type: line?.type || "",
 });
 
-const fetchAllRoutes = async () => {
-  if (routesCache) return routesCache;
-  if (routesPromise) return routesPromise;
-  routesPromise = fetch(
-    "https://data.mobilites-m.fr/api/routers/default/index/routes",
-  )
-    .then((res) => res.json())
-    .then((data) => {
-      routesCache = data || [];
-      return routesCache;
+const fetchLineLookup = async () => {
+  if (lineLookupCache) return lineLookupCache;
+  if (lineLookupPromise) return lineLookupPromise;
+  lineLookupPromise = getAllLines()
+    .then((lines) => {
+      lineLookupCache = buildLineLookup(lines);
+      return lineLookupCache;
     })
     .catch((err) => {
       console.error("Erreur chargement routes:", err);
-      routesCache = [];
-      return routesCache;
+      lineLookupCache = new Map();
+      return lineLookupCache;
     });
-  return routesPromise;
+  return lineLookupPromise;
 };
 
 const getLineDataFromRouteCache = (lineKeyRaw, effectiveKey, cacheKey) => {
-  if (!routesCache) return null;
-  const route = routesCache.find((r) => {
-    const shortName = (r.shortName || "").toUpperCase();
-    const routeId = (r.id || "").toUpperCase();
-    return (
-      shortName === cacheKey || routeId === (lineKeyRaw || "").toUpperCase()
-    );
-  });
-  return route ? makeLineData(route, effectiveKey, cacheKey) : null;
+  if (!lineLookupCache) return null;
+  const line =
+    lineLookupCache.get((lineKeyRaw || "").toUpperCase()) ||
+    lineLookupCache.get(cacheKey);
+  return line ? makeLineData(line, effectiveKey, cacheKey) : null;
 };
 
 const extractLineKey = (lineKey) => {
@@ -222,16 +222,11 @@ export default function LineIcon({ lineKey = "", size = "w-6 h-6" }) {
         return;
       }
       try {
-        const routes = await fetchAllRoutes();
-        const route = routes.find((r) => {
-          const shortName = (r.shortName || "").toUpperCase();
-          const routeId = (r.id || "").toUpperCase();
-          return (
-            shortName === cacheKey || routeId === (lineKey || "").toUpperCase()
-          );
-        });
-        const data = route
-          ? makeLineData(route, effectiveKey, cacheKey)
+        const lookup = await fetchLineLookup();
+        const line =
+          lookup.get((lineKey || "").toUpperCase()) || lookup.get(cacheKey);
+        const data = line
+          ? makeLineData(line, effectiveKey, cacheKey)
           : {
               shortName: effectiveKey,
               color: LINE_COLORS[cacheKey] || "#94A3B8",
@@ -351,27 +346,20 @@ export default function LineIcon({ lineKey = "", size = "w-6 h-6" }) {
 
 export const preloadLineData = async (lineKeys) => {
   if (!lineKeys.length) return;
-  const routes = await fetchAllRoutes();
+  const lookup = await fetchLineLookup();
   for (const lineKeyRaw of lineKeys) {
     const normalizedKey = extractLineKey(lineKeyRaw);
     const navMatch = /^NAV([A-E])$/i.exec(normalizedKey.toUpperCase());
     const effectiveKey = navMatch ? navMatch[1] : normalizedKey;
     const cacheKey = effectiveKey.toUpperCase();
     if (lineDataCache.has(cacheKey)) continue;
-    const route = routes.find((r) => {
-      const shortName = (r.shortName || "").toUpperCase();
-      const routeId = (r.id || "").toUpperCase();
-      return (
-        shortName === cacheKey || routeId === (lineKeyRaw || "").toUpperCase()
-      );
-    });
-    const data = route
+    const line =
+      lookup.get((lineKeyRaw || "").toUpperCase()) || lookup.get(cacheKey);
+    const data = line
       ? {
-          shortName: route.shortName || effectiveKey,
-          color:
-            LINE_COLORS[cacheKey] ||
-            (route.color ? "#" + route.color : "#000000"),
-          type: route.type || "",
+          shortName: line.shortName || effectiveKey,
+          color: LINE_COLORS[cacheKey] || line.color || "#000000",
+          type: line.type || "",
         }
       : {
           shortName: effectiveKey,
@@ -386,5 +374,5 @@ export const getLineDataFromCache = (lineKey) =>
   lineDataCache.get(extractLineKey(lineKey).toUpperCase()) ?? null;
 
 export const preloadLineRouteCache = async () => {
-  await fetchAllRoutes();
+  await fetchLineLookup();
 };

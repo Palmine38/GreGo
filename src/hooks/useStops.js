@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { removeAccents } from "../utils/journey.js";
+import { normalizeRouteRef } from "../utils/routeLineResolver.js";
 
 const roundCoord = (n) => Math.round(n * 1e5) / 1e5;
 
@@ -203,8 +204,10 @@ export function useStops() {
 
     const prioritizeLine = (positions) => {
       if (!preferredLine?.trim()) return positions;
-      // on tolère un preferredLine avec ou sans préfixe réseau ("1" ou "SEM:1")
-      const line = preferredLine.replace(/^[A-Z0-9]+:/i, "").toUpperCase();
+      // on tolère un preferredLine avec ou sans préfixe réseau ("1" ou "SEM:1") ;
+      // même normalisation que celle utilisée pour résoudre les couleurs de
+      // ligne ailleurs dans l'appli (voir utils/routeLineResolver.js).
+      const line = normalizeRouteRef(preferredLine) || "";
       return [...positions].sort((a, b) => {
         const matches = (stop) =>
           stop.lines.some((x) => {

@@ -1,15 +1,8 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import { Sheet } from "react-modal-sheet";
 import { JourneyCard } from "./JourneyCard.jsx";
 import { JourneyDetailsContent } from "./JourneyDetailsSheet.jsx";
 import { useTheme } from "../hooks/useTheme.js";
-import {
-  NavbarPillBody,
-  NavbarPillSheetRoot,
-  NavbarPillShell,
-  navbarSnapPx,
-  useNavbarPillMetrics,
-} from "./NavbarPillSheet.jsx";
 
 const ArrowRightIcon = ({ className = "size-4" }) => (
   <svg
@@ -73,8 +66,8 @@ export function FastResearchResultSheet({
   onBackFromJourney,
   onSearchOffset,
   afterLabel,
-  snapPoints = [0, 0.4, 0.85, 1],
-  initialSnap = 2,
+  snapPoints = [0, 0.35, 0.85, 1],
+  initialSnap = 1,
   lineColors,
   getLineDisruptions = () => [],
   onLineClick,
@@ -86,17 +79,6 @@ export function FastResearchResultSheet({
   const isDarkMode = theme !== "light";
   const textColor = isDarkMode ? "text-slate-100" : "text-slate-900";
   const arrowColor = isDarkMode ? "text-gray-500" : "text-slate-600";
-
-  const { safeBottom, collapsedPadding } = useNavbarPillMetrics();
-
-  // `snapPoints`/`initialSnap` sont l'API publique (paliers "métier", sans
-  // le palier pilule) : on insère `navbarSnapPx` juste après le 0, en
-  // position NAVBAR_SNAP, comme l'exige NavbarPillSheet.jsx.
-  const pillSnapPoints = useMemo(() => {
-    const rest = snapPoints[0] === 0 ? snapPoints.slice(1) : snapPoints;
-    return [0, navbarSnapPx(safeBottom), ...rest];
-  }, [snapPoints, safeBottom]);
-  const pillInitialSnap = initialSnap === 0 ? 0 : initialSnap + 1;
 
   // Revenir à la liste quand la sheet se ferme ou qu'une nouvelle recherche démarre
   useEffect(() => {
@@ -118,125 +100,119 @@ export function FastResearchResultSheet({
   };
 
   return (
-    <NavbarPillSheetRoot
+    <Sheet
       isOpen={isOpen}
       onClose={onClose}
-      snapPoints={pillSnapPoints}
-      initialSnap={pillInitialSnap}
+      snapPoints={[0, 0.35, 0.85, 1]}
+      initialSnap={1}
     >
-      <NavbarPillShell
-        bottomInset={safeBottom}
-        collapsedPadding={collapsedPadding}
-        backgroundColor="var(--sheet-bg)"
-        revealedPadding={0}
-        revealedBottomGap={0}
-        revealedBottomRadius={0}
+      <Sheet.Container
+        style={{
+          borderRadius: "24px 24px 0 0",
+          backgroundColor: "var(--sheet-bg)",
+          overflow: "hidden",
+        }}
       >
-        {/* Sheet.Header et Sheet.Content restent enfants directs de
-        Sheet.Container (rendu par NavbarPillShell) : react-modal-sheet
-        s'appuie sur cette relation directe pour son propre layout. */}
         <Sheet.Header />
         <Sheet.Content disableDrag={(state) => state.scrollPosition !== "top"}>
-          <NavbarPillBody>
-            <div className="relative h-full overflow-hidden">
-              {/* ── Vue liste des résultats ── */}
-              <div
-                className="flex h-full flex-col px-4 pb-4 overflow-y-auto transition-transform duration-300 ease-out"
-                style={{
-                  transform: selectedJourney
-                    ? "translateX(-100%)"
-                    : "translateX(0)",
-                }}
-              >
-                {/* En-tête minimal : "<dep> → <arr>", centré, sans bordure ni fond */}
-                {(dep || arr) && (
-                  <div
-                    className={`flex items-left justify-left gap-2 py-2 text-xl font-semibold ${textColor}`}
-                  >
-                    <span>{dep}</span>
-                    <ArrowRightIcon className={`size-6 ${arrowColor}`} />
-                    <span>{arr}</span>
-                  </div>
-                )}
-
-                {/* Liste des résultats, cliquables → vue détail (swipe) */}
-                <div className="space-y-2 mt-3">
-                  {results.length === 0 ? (
-                    <div className="p-4 text-center text-gray-500">
-                      {loading
-                        ? "Recherche en cours..."
-                        : "Aucun itinéraire trouvé."}
-                    </div>
-                  ) : (
-                    results.map((item, idx) => (
-                      <JourneyCard
-                        key={idx}
-                        item={item}
-                        currentTime={currentTime}
-                        isLineDisrupted={isLineDisrupted}
-                        onClick={() => handleSelectJourney(item)}
-                      />
-                    ))
-                  )}
-                </div>
-
-                {/* Navigation temporelle */}
+          <div className="relative h-full overflow-hidden">
+            {/* ── Vue liste des résultats ── */}
+            <div
+              className="flex h-full flex-col px-4 pb-4 overflow-y-auto transition-transform duration-300 ease-out"
+              style={{
+                transform: selectedJourney
+                  ? "translateX(-100%)"
+                  : "translateX(0)",
+              }}
+            >
+              {/* En-tête minimal : "<dep> → <arr>", centré, sans bordure ni fond */}
+              {(dep || arr) && (
                 <div
-                  className={`mt-4 flex items-center gap-2 ${
-                    results.length > 0 && timeOffset >= 0
-                      ? "justify-between"
-                      : "justify-end"
-                  }`}
+                  className={`flex items-left justify-left gap-2 py-2 text-xl font-semibold ${textColor}`}
                 >
-                  {timeOffset >= 0 && results.length > 0 && (
-                    <button
-                      className="px-2 py-1 text-sm font-semibold text-black hover:text-gray-700"
-                      onClick={() => onSearchOffset?.(timeOffset - 0.5)}
-                      disabled={loading}
-                    >
-                      <ArrowRightIcon className="size-4 scale-x-[-1]" />
-                    </button>
-                  )}
-                  {results.length > 0 && (
-                    <button
-                      className="px-2 py-1 text-sm font-semibold text-black hover:text-gray-700"
-                      onClick={() => onSearchOffset?.(timeOffset + 0.5)}
-                      disabled={loading}
-                    >
-                      rechercher pour {afterLabel}
-                      <ArrowRightIcon className="size-4 inline ml-1" />
-                    </button>
-                  )}
+                  <span>{dep}</span>
+                  <ArrowRightIcon className={`size-6 ${arrowColor}`} />
+                  <span>{arr}</span>
                 </div>
+              )}
 
-                <div style={{ height: "10vh" }} />
-              </div>
-
-              {/* ── Vue détail du trajet sélectionné ── */}
-              <div
-                className="absolute inset-0 flex h-full flex-col overflow-y-auto transition-transform duration-300 ease-out"
-                style={{
-                  transform: selectedJourney
-                    ? "translateX(0)"
-                    : "translateX(100%)",
-                }}
-              >
-                {selectedJourney && (
-                  <JourneyDetailsContent
-                    journey={selectedJourney}
-                    lineColors={lineColors}
-                    getLineDisruptions={getLineDisruptions}
-                    hideMap={hideMap}
-                    onLineClick={onLineClick}
-                    onBack={handleBack}
-                  />
+              {/* Liste des résultats, cliquables → vue détail (swipe) */}
+              <div className="space-y-2 mt-3">
+                {results.length === 0 ? (
+                  <div className="p-4 text-center text-gray-500">
+                    {loading
+                      ? "Recherche en cours..."
+                      : "Aucun itinéraire trouvé."}
+                  </div>
+                ) : (
+                  results.map((item, idx) => (
+                    <JourneyCard
+                      key={idx}
+                      item={item}
+                      currentTime={currentTime}
+                      isLineDisrupted={isLineDisrupted}
+                      onClick={() => handleSelectJourney(item)}
+                    />
+                  ))
                 )}
               </div>
+
+              {/* Navigation temporelle */}
+              <div
+                className={`mt-4 flex items-center gap-2 ${
+                  results.length > 0 && timeOffset >= 0
+                    ? "justify-between"
+                    : "justify-end"
+                }`}
+              >
+                {timeOffset >= 0 && results.length > 0 && (
+                  <button
+                    className="px-2 py-1 text-sm font-semibold text-black hover:text-gray-700"
+                    onClick={() => onSearchOffset?.(timeOffset - 0.5)}
+                    disabled={loading}
+                  >
+                    <ArrowRightIcon className="size-4 scale-x-[-1]" />
+                  </button>
+                )}
+                {results.length > 0 && (
+                  <button
+                    className="px-2 py-1 text-sm font-semibold text-black hover:text-gray-700"
+                    onClick={() => onSearchOffset?.(timeOffset + 0.5)}
+                    disabled={loading}
+                  >
+                    rechercher pour {afterLabel}
+                    <ArrowRightIcon className="size-4 inline ml-1" />
+                  </button>
+                )}
+              </div>
+
+              <div style={{ height: "10vh" }} />
             </div>
-          </NavbarPillBody>
+
+            {/* ── Vue détail du trajet sélectionné ── */}
+            <div
+              className="absolute inset-0 flex h-full flex-col overflow-y-auto transition-transform duration-300 ease-out"
+              style={{
+                transform: selectedJourney
+                  ? "translateX(0)"
+                  : "translateX(100%)",
+              }}
+            >
+              {selectedJourney && (
+                <JourneyDetailsContent
+                  journey={selectedJourney}
+                  lineColors={lineColors}
+                  getLineDisruptions={getLineDisruptions}
+                  hideMap={hideMap}
+                  onLineClick={onLineClick}
+                  onBack={handleBack}
+                />
+              )}
+            </div>
+          </div>
         </Sheet.Content>
-      </NavbarPillShell>
+      </Sheet.Container>
       <Sheet.Backdrop onTap={onClose} />
-    </NavbarPillSheetRoot>
+    </Sheet>
   );
 }

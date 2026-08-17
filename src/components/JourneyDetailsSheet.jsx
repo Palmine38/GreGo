@@ -4,12 +4,16 @@ import { useCurrentTime } from "../hooks/useCurrentTime.js";
 import { useSettings } from "../hooks/useSettings.js";
 import { formatTimeUntil } from "../utils/journey.js";
 import MapLibreMap, { Marker, Source, Layer } from "react-map-gl/maplibre";
-import LineIcon, { LINE_COLORS, preloadLineData } from "./lines-icons.jsx";
+import LineIcon, { preloadLineData } from "./lines-icons.jsx";
 import { Sheet } from "react-modal-sheet";
 import lineB from "./lineB.json";
 import lineNAVBVerdunToPDS from "./lineNAVB_verdun_to_pds.json";
 import lineNAVBPdsToVerdun from "./lineNAVB_pds_to_verdun.json";
 import { useTheme } from "../hooks/useTheme.js";
+import {
+  resolveRouteLine,
+  normalizeRouteRef,
+} from "../utils/routeLineResolver.js";
 
 const MAPTILER_STYLE_URL_LIGHT =
   "https://api.maptiler.com/maps/019f7c76-a3f8-751b-bedb-d7fe9d83d122/style.json?key=7TQErbyvEqFlis3QMmSl";
@@ -33,6 +37,32 @@ const ArrowIcon = () => (
     />
   </svg>
 );
+
+const NavigationIcon = () => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className="w-4 h-4 flex-shrink-0"
+  >
+    <path d="M11.47 3.84a.75.75 0 0 1 1.06 0l8.69 8.69a.75.75 0 1 0 1.06-1.06l-4.5-4.5a.75.75 0 1 0-1.06 1.06l3.22 3.22h-15.94l3.22-3.22a.75.75 0 1 0-1.06-1.06l-4.5 4.5a.75.75 0 1 0 1.06 1.06l8.69-8.69Z" />
+  </svg>
+);
+
+// Style du bouton "Suivre mon trajet" pour chacun des 3 thèmes de la PWA
+// (voir hooks/useTheme.js — useTheme() renvoie toujours "light" | "dark" |
+// "gray", jamais "auto", donc les 3 clés suffisent).
+const FOLLOW_TRIP_BUTTON_STYLES = {
+  light: {
+    className: "bg-slate-100 text-slate-900 hover:bg-slate-200",
+  },
+  dark: {
+    className: "bg-slate-800 text-white hover:bg-slate-700",
+  },
+  gray: {
+    className: "bg-zinc-700 text-white hover:bg-zinc-600",
+  },
+};
 
 function decodePolyline(encoded) {
   let index = 0,
@@ -109,9 +139,9 @@ function cleanStopName(name) {
 }
 
 function getLegLineName(leg) {
-  return (leg.routeShortName || leg.route || leg.routeId || "")
-    .replace("SEM:", "")
-    .toUpperCase();
+  return (
+    normalizeRouteRef(leg.routeShortName || leg.route || leg.routeId) || ""
+  );
 }
 
 // La géométrie fournie par OTP peut être approximative pour certaines lignes.
@@ -243,10 +273,30 @@ function formatLegDuration(leg) {
     : `${Math.floor(minutes / 60)} h${minutes % 60 ? ` ${minutes % 60}` : ""}`;
 }
 
-/* ---------------------------------------------------------------------
- * Bouton "Lancer le trajet" et panneau de navigation associé — désactivés.
- * (fonctions et composants commentés ci-dessous)
- * ---------------------------------------------------------------------
+// Style du panneau "trajet en cours" (JourneyNavigationPanel) pour les 3
+// thèmes — même logique que FOLLOW_TRIP_BUTTON_STYLES ci-dessus, le panneau
+// remplace le bouton une fois le suivi démarré donc il doit s'accorder au
+// même fond.
+const NAVIGATION_PANEL_STYLES = {
+  light: {
+    card: "border-slate-200 bg-white text-slate-900",
+    subtitle: "text-slate-600",
+    track: "bg-slate-100",
+    stopButton: "bg-slate-100 text-slate-700 hover:bg-slate-200",
+  },
+  dark: {
+    card: "border-slate-700 bg-slate-800 text-white",
+    subtitle: "text-slate-300",
+    track: "bg-slate-700",
+    stopButton: "bg-slate-700 text-slate-200 hover:bg-slate-600",
+  },
+  gray: {
+    card: "border-zinc-600 bg-zinc-700 text-white",
+    subtitle: "text-zinc-300",
+    track: "bg-zinc-600",
+    stopButton: "bg-zinc-600 text-zinc-100 hover:bg-zinc-500",
+  },
+};
 
 function getStartInstruction(journey, now) {
   const firstLeg = journey?.allLegs?.[0];
@@ -360,9 +410,11 @@ function getNavigationState(journey, now) {
   };
 }
 
-function JourneyNavigationPanel({ journey, currentTime, onStop }) {
+function JourneyNavigationPanel({ journey, currentTime, theme, onStop }) {
   const nav = getNavigationState(journey, currentTime);
   if (!nav) return null;
+
+  const style = NAVIGATION_PANEL_STYLES[theme] || NAVIGATION_PANEL_STYLES.light;
 
   const nextLabel = nav.nextLeg
     ? nav.nextLeg.mode === "WALK"
@@ -371,7 +423,9 @@ function JourneyNavigationPanel({ journey, currentTime, onStop }) {
     : "Dernière étape";
 
   return (
-    <div className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white text-slate-900 shadow-sm">
+    <div
+      className={`mb-5 overflow-hidden rounded-2xl border shadow-sm ${style.card}`}
+    >
       <div className="px-4 py-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -382,12 +436,12 @@ function JourneyNavigationPanel({ journey, currentTime, onStop }) {
               {nav.title}
             </h3>
             {nav.subtitle && (
-              <p className="mt-1 text-sm text-slate-600">{nav.subtitle}</p>
+              <p className={`mt-1 text-sm ${style.subtitle}`}>{nav.subtitle}</p>
             )}
           </div>
         </div>
 
-        <div className="mt-4 h-1.5 rounded-full bg-slate-100">
+        <div className={`mt-4 h-1.5 rounded-full ${style.track}`}>
           <div
             className="h-full rounded-full bg-blue-600 transition-all duration-500"
             style={{ width: `${nav.progress}%` }}
@@ -395,11 +449,11 @@ function JourneyNavigationPanel({ journey, currentTime, onStop }) {
         </div>
 
         <div className="mt-4 flex items-center justify-between gap-3">
-          <p className="text-sm text-slate-600">{nextLabel}</p>
+          <p className={`text-sm ${style.subtitle}`}>{nextLabel}</p>
           <button
             type="button"
             onClick={onStop}
-            className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-200"
+            className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${style.stopButton}`}
           >
             Arrêter
           </button>
@@ -409,28 +463,6 @@ function JourneyNavigationPanel({ journey, currentTime, onStop }) {
   );
 }
 
-function JourneyStartPanel({ onStart }) {
-  return (
-    <button
-      type="button"
-      onClick={onStart}
-      className="mb-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 py-3.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700"
-    >
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="currentColor"
-        className="size-4"
-      >
-        <path d="M8 5.14v13.72a1 1 0 0 0 1.52.85l11.23-6.86a1 1 0 0 0 0-1.7L9.52 4.29A1 1 0 0 0 8 5.14Z" />
-      </svg>
-      Lancer le trajet
-    </button>
-  );
-}
-
---------------------------------------------------------------------- */
-
 /**
  * Carte inline déroulante pour un itinéraire.
  * S'affiche/masque avec une animation CSS height.
@@ -438,6 +470,7 @@ function JourneyStartPanel({ onStart }) {
 export function InlineJourneyMap({
   journey,
   lineColors,
+  lineLookup,
   isOpen,
   showIntermediateStops = true,
 }) {
@@ -518,11 +551,16 @@ export function InlineJourneyMap({
 
   const allTransitStops = showIntermediateStops
     ? transitLegs.flatMap((leg) => {
-        const lineName = (leg.routeShortName || leg.route || leg.routeId || "")
-          .replace("SEM:", "")
-          .toUpperCase();
+        const resolvedLine = resolveRouteLine({
+          routeShortName: leg.routeShortName,
+          route: leg.route,
+          routeId: leg.routeId,
+          lineLookup,
+        });
         const color =
-          LINE_COLORS[lineName] || lineColors?.[lineName] || "#94A3B8";
+          resolvedLine?.color ||
+          lineColors?.[resolvedLine?.normalized] ||
+          "#94A3B8";
         return [...(leg.intermediateStops || []), leg.to]
           .filter((stop) => stop?.lon && stop?.lat)
           .map((s) => ({
@@ -547,9 +585,8 @@ export function InlineJourneyMap({
       const coords = getLegGeometry(leg);
       const mid = midpoint(coords);
       if (!mid) return null;
-      const lineName = (leg.routeShortName || leg.route || leg.routeId || "")
-        .replace("SEM:", "")
-        .toUpperCase();
+      const lineName =
+        normalizeRouteRef(leg.routeShortName || leg.route || leg.routeId) || "";
       return { lon: mid[0], lat: mid[1], lineName };
     })
     .filter(Boolean);
@@ -607,16 +644,16 @@ export function InlineJourneyMap({
                 const coords = getLegGeometry(leg);
                 if (coords.length < 2) return null;
                 const isWalk = leg.mode === "WALK";
-                const lineName = (
-                  leg.routeShortName ||
-                  leg.route ||
-                  leg.routeId ||
-                  ""
-                )
-                  .replace("SEM:", "")
-                  .toUpperCase();
+                const resolvedLine = resolveRouteLine({
+                  routeShortName: leg.routeShortName,
+                  route: leg.route,
+                  routeId: leg.routeId,
+                  lineLookup,
+                });
                 const color =
-                  LINE_COLORS[lineName] || lineColors?.[lineName] || "#94A3B8";
+                  resolvedLine?.color ||
+                  lineColors?.[resolvedLine?.normalized] ||
+                  "#94A3B8";
                 return (
                   <Source
                     key={`leg-${i}`}
@@ -845,24 +882,27 @@ export function InlineJourneyMap({
 export function JourneyDetailsContent({
   journey,
   lineColors,
+  lineLookup,
   getLineDisruptions,
   hideMap = false,
   onLineClick,
+  onFollowTrip,
   currentSnap,
   onBack,
 }) {
   const currentTime = useCurrentTime();
+  const theme = useTheme();
   const { settings } = useSettings();
   const [height, setHeight] = useState(60);
   const [mapOpen, setMapOpen] = useState(false);
-  // const [tripStarted, setTripStarted] = useState(false); // bouton "Lancer le trajet" désactivé
+  const [tripStarted, setTripStarted] = useState(false);
 
   // Reset quand un nouveau trajet est sélectionné
   useEffect(() => {
     if (journey) {
       setHeight(60);
       setMapOpen(false);
-      // setTripStarted(false); // bouton "Lancer le trajet" désactivé
+      setTripStarted(false);
     }
   }, [journey]);
 
@@ -969,24 +1009,34 @@ export function JourneyDetailsContent({
           <p className="text-xl font-bold">{journey.arr}</p>
         </div>
       </div>
-
-      {/* Bouton "Lancer le trajet" / panneau de navigation — désactivé
+      {/*}
       {tripStarted ? (
         <JourneyNavigationPanel
           journey={journey}
           currentTime={currentTime}
+          theme={theme}
           onStop={() => setTripStarted(false)}
         />
       ) : (
-        <JourneyStartPanel
-          onStart={() => {
+        <button
+          type="button"
+          onClick={() => {
             setTripStarted(true);
             if (height < 80) setHeight(85);
+            onFollowTrip?.(journey);
           }}
-        />
+          className={`mb-5 flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3.5 text-sm font-semibold shadow-sm transition-colors ${
+            (
+              FOLLOW_TRIP_BUTTON_STYLES[theme] ||
+              FOLLOW_TRIP_BUTTON_STYLES.light
+            ).className
+          }`}
+        >
+          <NavigationIcon />
+          Suivre mon trajet
+        </button>
       )}
-      */}
-
+*/}
       {!hideMap && (
         <>
           <button
@@ -1033,6 +1083,7 @@ export function JourneyDetailsContent({
             <InlineJourneyMap
               journey={journey}
               lineColors={lineColors}
+              lineLookup={lineLookup}
               isOpen={mapOpen}
               showIntermediateStops={settings.showIntermediateStops}
             />
@@ -1043,6 +1094,7 @@ export function JourneyDetailsContent({
       <JourneyTimeline
         journey={journey}
         lineColors={lineColors}
+        lineLookup={lineLookup}
         getLineDisruptions={getLineDisruptions}
         showDisruptions={settings.showJourneyDisruptions}
         showIntermediateStops={settings.showIntermediateStops}
@@ -1075,12 +1127,14 @@ export function JourneyDetailsSheet({
   isOpen,
   onClose,
   lineColors,
+  lineLookup,
   getLineDisruptions,
   hideBackdrop = false,
   hideMap = false,
   snapPoints = [0, 0.6, 1],
   initialSnap = 1,
   onLineClick,
+  onFollowTrip,
 }) {
   const [currentSnap, setCurrentSnap] = useState(initialSnap);
 
@@ -1106,9 +1160,11 @@ export function JourneyDetailsSheet({
           <JourneyDetailsContent
             journey={journey}
             lineColors={lineColors}
+            lineLookup={lineLookup}
             getLineDisruptions={getLineDisruptions}
             hideMap={hideMap}
             onLineClick={onLineClick}
+            onFollowTrip={onFollowTrip}
             currentSnap={currentSnap}
           />
         </Sheet.Content>

@@ -1,9 +1,10 @@
 import React from "react";
-import LineIcon, { LINE_COLORS } from "./lines-icons.jsx";
+import LineIcon from "./lines-icons.jsx";
 import { DisruptionItem } from "./DisruptionItem.jsx";
 import { formatDuration } from "../utils/journey.js";
 import { isCurrentLocationValue } from "../utils/currentLocation.js";
 import { useTheme } from "../hooks/useTheme.js";
+import { resolveRouteLine } from "../utils/routeLineResolver.js";
 
 /**
  * Affiche la timeline pas-à-pas d'un itinéraire (transit + marche).
@@ -16,6 +17,7 @@ import { useTheme } from "../hooks/useTheme.js";
 export function JourneyTimeline({
   journey,
   lineColors,
+  lineLookup,
   getLineDisruptions,
   showDisruptions = true,
   showIntermediateStops = true,
@@ -55,10 +57,14 @@ export function JourneyTimeline({
 
   allLegs.forEach((leg, i) => {
     const isWalk = leg.mode === "WALK";
-    const lineName = (leg.routeShortName || leg.route || leg.routeId || "")
-      .replace("SEM:", "")
-      .toUpperCase();
-    const color = LINE_COLORS[lineName] || lineColors[lineName] || "#6B7280";
+    const resolvedLine = resolveRouteLine({
+      routeShortName: leg.routeShortName,
+      route: leg.route,
+      routeId: leg.routeId,
+      lineLookup,
+    });
+    const lineName = resolvedLine?.normalized || "";
+    const color = resolvedLine?.color || lineColors[lineName] || "#6B7280";
     const durationMin = Math.round(leg.duration / 60);
 
     const prevLeg = allLegs[i - 1];
@@ -210,13 +216,12 @@ export function JourneyTimeline({
       }
     }
 
-  if (
-    isWalk &&
-    (durationMin >= 1 ||
-      leg.distance > MAX_HIDDEN_WALK_TO_STOP_METERS ||
-      isBetweenTransits)
-  ) {
-
+    if (
+      isWalk &&
+      (durationMin >= 1 ||
+        leg.distance > MAX_HIDDEN_WALK_TO_STOP_METERS ||
+        isBetweenTransits)
+    ) {
       items.push(
         <div key={`walk-${i}`} className="flex gap-3 items-center">
           <div className="flex flex-col items-center w-8 flex-shrink-0">

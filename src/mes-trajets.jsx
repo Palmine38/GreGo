@@ -7,6 +7,7 @@ import { useCurrentTime } from "./hooks/useCurrentTime.js";
 import { useStops } from "./hooks/useStops.js";
 import { useDisruptions } from "./hooks/useDisruptions.js";
 import { useLineColors } from "./hooks/useLineColors.js";
+import { useLineLookup } from "./hooks/useLineLookup.js";
 import { useSettings } from "./hooks/useSettings.js";
 import { JourneyCard } from "./components/JourneyCard.jsx";
 import { JourneyTimeline } from "./components/JourneyTimeline.jsx";
@@ -79,6 +80,7 @@ export default function MesTrajets() {
   const { disruptionsRaw, isLineDisrupted, getLineDisruptions } =
     useDisruptions();
   const { lineColors } = useLineColors();
+  const lineLookup = useLineLookup();
   const resolveDisplayName = (idOrName) => {
     if (!idOrName) return idOrName;
     if (isCurrentLocationValue(idOrName)) return CURRENT_LOCATION_LABEL;
@@ -1808,6 +1810,7 @@ export default function MesTrajets() {
           onClose={closeJourneyDetails}
           journey={selectedJourney}
           lineColors={lineColors}
+          lineLookup={lineLookup}
           getLineDisruptions={getLineDisruptions}
           onLineClick={(lk, snapIndex) => {
             setSelectedLineInfo(lk);
