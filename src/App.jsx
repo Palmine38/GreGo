@@ -17,6 +17,7 @@ import { preloadStops } from "./hooks/useStops.js";
 import { DevOverlay } from "./components/devOverlay.jsx";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
+import { PageSeo } from "./components/PageSeo.jsx";
 import "./App.css";
 
 function DeviceGuard({ children }) {
@@ -35,6 +36,15 @@ function DeviceGuard({ children }) {
   }, []);
 
   return children;
+}
+
+function SeoRoute({ page, children }) {
+  return (
+    <>
+      <PageSeo page={page} />
+      {children}
+    </>
+  );
 }
 
 function App() {
@@ -57,25 +67,31 @@ function App() {
         <Route
           path="/fastresearch"
           element={
-            <DeviceGuard>
-              <FastResearch />
-            </DeviceGuard>
+            <SeoRoute page="fastResearch">
+              <DeviceGuard>
+                <FastResearch />
+              </DeviceGuard>
+            </SeoRoute>
           }
         />
         <Route
           path="/mes-trajets"
           element={
-            <DeviceGuard>
-              <MesTrajets />
-            </DeviceGuard>
+            <SeoRoute page="trips">
+              <DeviceGuard>
+                <MesTrajets />
+              </DeviceGuard>
+            </SeoRoute>
           }
         />
         <Route
           path="/settings"
           element={
-            <DeviceGuard>
-              <Settings />
-            </DeviceGuard>
+            <SeoRoute page="settings">
+              <DeviceGuard>
+                <Settings />
+              </DeviceGuard>
+            </SeoRoute>
           }
         />
         {/* PAS ENCORE DISPONIBLE SUR LE SITE PUBLIC
@@ -90,12 +106,21 @@ function App() {
         <Route
           path="/infotrafic"
           element={
-            <DeviceGuard>
-              <InfoTrafic />
-            </DeviceGuard>
+            <SeoRoute page="traffic">
+              <DeviceGuard>
+                <InfoTrafic />
+              </DeviceGuard>
+            </SeoRoute>
           }
         />
-        <Route path="/" element={<Navigate to="/mes-trajets" replace />} />
+        <Route
+          path="/"
+          element={
+            <SeoRoute page="home">
+              <Navigate to="/mes-trajets" replace />
+            </SeoRoute>
+          }
+        />
       </Routes>
       <Analytics />
       <SpeedInsights />

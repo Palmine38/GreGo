@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot, hydrateRoot } from "react-dom/client";
+import { HelmetProvider } from "react-helmet-async";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./index.css";
 import App from "./App.jsx";
@@ -12,13 +13,17 @@ const renderApp = () => {
     hydrateRoot(
       container,
       <StrictMode>
-        <App />
+        <HelmetProvider>
+          <App />
+        </HelmetProvider>
       </StrictMode>,
     );
   } else {
     createRoot(container).render(
       <StrictMode>
-        <App />
+        <HelmetProvider>
+          <App />
+        </HelmetProvider>
       </StrictMode>,
     );
   }

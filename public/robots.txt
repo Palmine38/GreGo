@@ -3,15 +3,3 @@ Allow: /
 
 # Sitemap
 Sitemap: https://gre-go.app/sitemap.xml
-
-# Pages publiques indexables
-Allow: /$
-Allow: /mes-trajets
-Allow: /fastresearch
-Allow: /settings
-Allow: /infotrafic
-
-# Fichiers statiques
-Allow: /manifest.json
-Allow: /robots.txt
-Allow: /sitemap.xml
