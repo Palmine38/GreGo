@@ -1,4 +1,4 @@
-[![Attribution](https://image.noelshack.com/fichiers/2026/34/1/1786993217-og-git-1.png)](https://github.com/zuckb0t)
+[![Attribution](https://pngup.com/UnOr/OG_git%20(1).png)](https://github.com/zuckb0t)
 
 ## [![Bannière Grego](https://image.noelshack.com/fichiers/2026/30/5/1784922257-dark-no-bg-banner.png)](https://gre-go.vercel.app/)
 [![React](https://img.shields.io/badge/React-19.2.4-blue.svg)](https://reactjs.org/)
