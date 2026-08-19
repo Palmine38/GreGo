@@ -1421,7 +1421,7 @@ export default function MesTrajets() {
           <div className="relative">
             <div
               ref={trajetScrollRef}
-              className="trajet-scroll flex flex-nowrap items-center gap-3 overflow-x-auto -mx-1 px-1 pb-1"
+              className="trajet-scroll flex flex-nowrap items-center gap-3 overflow-x-auto -mx-1 px-1 pb-1 min-h-[42px]"
             >
               {(() => {
                 const nodes = [];

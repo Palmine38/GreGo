@@ -67,6 +67,10 @@ export function JourneyResultsHeader({
 }) {
   const theme = useTheme();
   const disruptedColor = theme !== "light" ? "#ea580c" : "#e61e1e";
+  const refreshActionClass =
+    theme === "light"
+      ? "text-gray-600 hover:text-gray-900 focus-visible:text-gray-700 focus-visible:ring-slate-400 focus-visible:ring-offset-white"
+      : "text-slate-300 hover:text-white focus-visible:text-white focus-visible:ring-slate-500 focus-visible:ring-offset-slate-800";
   const savedSettings = JSON.parse(
     localStorage.getItem("tag-express-settings") || "{}",
   );
@@ -100,10 +104,7 @@ export function JourneyResultsHeader({
         onClick={onHeaderClick}
         onKeyDown={(event) => {
           if (event.target !== event.currentTarget) return;
-          if (
-            onHeaderClick &&
-            (event.key === "Enter" || event.key === " ")
-          ) {
+          if (onHeaderClick && (event.key === "Enter" || event.key === " ")) {
             event.preventDefault();
             onHeaderClick();
           }
@@ -156,7 +157,7 @@ export function JourneyResultsHeader({
         <button
           onClick={onRefresh}
           disabled={loading}
-          className="ml-auto text-gray-600 hover:text-gray-900 transition-colors"
+          className={`ml-auto transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${refreshActionClass}`}
           title="Rafraîchir"
         >
           {showRefreshCheck ? (

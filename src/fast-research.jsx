@@ -810,11 +810,33 @@ export default function FastResearch() {
   };
 
   const openMapStop = (stop) => {
+    // Ferme le clavier virtuel si la barre de recherche avait le focus
+    // (cas d'ouverture depuis une suggestion d'arrêt) — sans effet sinon
+    // (ex. clic sur un poteau depuis la carte).
+    quickSearchRef.current?.blur();
     setActiveStopLine(null);
     setActiveStopInfoLine(null);
     setActiveStopLineTrace([]);
     setActiveStopLineStops([]);
     setSelectedMapStop(stop);
+  };
+
+  // Sélection d'un ARRÊT (pas une adresse) depuis la barre de recherche
+  // rapide : on ouvre sa fiche détail (StopDetailsSheet, prochains passages,
+  // lignes desservies…) plutôt que de lancer directement une recherche
+  // d'itinéraire vers cet arrêt.
+  const openStopFromSearch = (stopName) => {
+    setQuickSearch(stopName);
+    setQuickSearchActive(false);
+    setAddressSuggestions([]);
+    setError("");
+
+    const stopPosition = findStop(stopName)[0];
+    if (!stopPosition) {
+      setError(`L'arrêt « ${stopName} » est introuvable.`);
+      return;
+    }
+    openMapStop(stopPosition);
   };
 
   const closeMapStop = () => {
@@ -863,7 +885,7 @@ export default function FastResearch() {
     );
     if (matchingStopKey) {
       const stopName = stopsMap[matchingStopKey]?.[0]?.name || matchingStopKey;
-      selectQuickDestination(stopName);
+      openStopFromSearch(stopName);
       return;
     }
 
@@ -959,6 +981,7 @@ export default function FastResearch() {
         </div>
         {!quickSearchActive &&
           quickSearch &&
+          !hasExactStopMatch &&
           (loading || results.length === 0) && (
             <div className="mt-2 flex items-center gap-2 rounded-xl bg-white/95 px-3 py-2 text-sm font-medium text-slate-700 shadow">
               {loading && (
@@ -986,7 +1009,7 @@ export default function FastResearch() {
                 key={`stop-${stop}`}
                 type="button"
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => selectQuickDestination(stop)}
+                onClick={() => openStopFromSearch(stop)}
                 className="flex w-full flex-col px-4 py-3 text-left hover:bg-slate-50"
               >
                 <span className="text-sm font-semibold text-slate-800">

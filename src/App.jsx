@@ -18,6 +18,8 @@ import { DevOverlay } from "./components/devOverlay.jsx";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { PageSeo } from "./components/PageSeo.jsx";
+import { useInstallPrompt } from "./hooks/useInstallPrompt.js";
+import { InstallGreGoSheet } from "./components/InstallGreGoSheet.jsx";
 import "./App.css";
 
 function DeviceGuard({ children }) {
@@ -46,6 +48,18 @@ function SeoRoute({ page, children }) {
     </>
   );
 }
+function InstallPromptGate() {
+  const { ready, shouldShow, platform, dismiss } = useInstallPrompt();
+  if (!ready) return null;
+
+  return (
+    <InstallGreGoSheet
+      isOpen={shouldShow}
+      onClose={dismiss}
+      platform={platform}
+    />
+  );
+}
 
 function App() {
   useEffect(() => {
@@ -62,6 +76,7 @@ function App() {
   return (
     <Router>
       <DevOverlay />
+      <InstallPromptGate />
       <Routes>
         <Route path="/mobile" element={<NoMobile />} />
         <Route
