@@ -1,3 +1,5 @@
+[![Attribution](https://pngup.com/6c2h/zuckb0t.png)](https://github.com/zuckb0t)
+
 ## [![Bannière Grego](https://image.noelshack.com/fichiers/2026/30/5/1784922257-dark-no-bg-banner.png)](https://gre-go.vercel.app/)
 [![React](https://img.shields.io/badge/React-19.2.4-blue.svg)](https://reactjs.org/)
 [![Vite](https://img.shields.io/badge/Vite-8.0.0-646CFF.svg)](https://vitejs.dev/)
@@ -328,3 +330,5 @@ Les issues et demandes de fonctionnalités sont également bienvenues :)
 - [Documentation Tailwind CSS](https://tailwindcss.com/)
 - [API TAG Mobilités](https://data.mobilites-m.fr/)
 - [MapLibre GL](https://maplibre.org/)
+
+## Credits: [antquu/GreLines](https://github.com/antquu/GreLines)
