@@ -94,6 +94,7 @@ function extractPassages(
       flat.push(
         wantedLine
           ? {
+              route,
               direction,
               min: minutes,
               ts: ts * 1000,
@@ -263,6 +264,42 @@ function stopTimeForTrip(payload, tripId) {
   return null;
 }
 
+async function fetchTransitDuration(fromStop, toStop, line, departureTs) {
+  if (!fromStop?.id || !toStop?.id) return null;
+
+  const departureDate = new Date(departureTs);
+  const params = new URLSearchParams({
+    fromPlace: `${fromStop.name}::${fromStop.id}`,
+    toPlace: `${toStop.name}::${toStop.id}`,
+    arriveBy: "false",
+    time: departureDate.toTimeString().slice(0, 5),
+    date: formatDateInputValue(departureDate),
+    routerId: "default",
+    optimize: "QUICK",
+    locale: "fr",
+    mode: "TRANSIT",
+    showIntermediateStops: "true",
+    numItineraries: "5",
+  });
+  const response = await fetch(
+    `https://data.mobilites-m.fr/api/routers/default/plan?${params}`,
+  );
+  if (!response.ok) return null;
+
+  const payload = await response.json();
+  const wantedLine = lineKey(line);
+  const itineraries = payload.plan?.itineraries || [];
+  for (const itinerary of itineraries) {
+    const transitLeg = (itinerary.legs || []).find(
+      (leg) =>
+        leg.mode !== "WALK" &&
+        lineKey(leg.routeShortName || leg.route || leg.routeId) === wantedLine,
+    );
+    if (transitLeg?.duration > 0) return transitLeg.duration * 1000;
+  }
+  return null;
+}
+
 function fetchTripProgress(passage, currentStopName) {
   const cacheKey = `${passage.tripId}|${passage.stopId}|${passage.pattern?.id}`;
   const cached = tripProgressCache.get(cacheKey);
@@ -288,7 +325,29 @@ function fetchTripProgress(passage, currentStopName) {
             passage: stopTimeForTrip(await res.json(), passage.tripId),
           };
         }),
-      ),
+      ).then(async (results) => {
+        const lastIndex = results.length - 1;
+        const previous = results[lastIndex - 1];
+        const last = results[lastIndex];
+        if (!last || last.passage || !previous?.passage) return results;
+
+        const duration = await fetchTransitDuration(
+          previous,
+          last,
+          passage.route,
+          previous.passage.ts,
+        );
+        if (!duration) return results;
+
+        return results.map((stop, index) =>
+          index === lastIndex
+            ? {
+                ...stop,
+                passage: { ts: previous.passage.ts + duration },
+              }
+            : stop,
+        );
+      }),
     )
     .catch((error) => {
       tripProgressCache.delete(cacheKey);
@@ -420,11 +479,13 @@ function TripProgress({ passage, currentStopName, lineColors }) {
                       </p>
                     )}
                   </div>
-                  <p className="shrink-0 text-sm font-bold tabular-nums text-slate-900">
-                    {hasRealtime
-                      ? formatTimeAt(stop.passage.ts)
-                      : "Non communiqué"}
-                  </p>
+                  {(hasRealtime || isLast) && (
+                    <p className="shrink-0 text-sm font-bold tabular-nums text-slate-900">
+                      {hasRealtime
+                        ? formatTimeAt(stop.passage.ts)
+                        : "Non communiqué"}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -650,13 +711,19 @@ function PassageCard({
       ) : (
         <div className="flex items-center gap-3 p-3">{content}</div>
       )}
-      {expanded && (
-        <TripProgress
-          passage={{ route, direction, min, ts, tripId, stopId, pattern }}
-          currentStopName={currentStopName}
-          lineColors={lineColors}
-        />
-      )}
+      <div
+        className={`grid overflow-hidden transition-[grid-template-rows] duration-300 ease-out ${
+          expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <TripProgress
+            passage={{ route, direction, min, ts, tripId, stopId, pattern }}
+            currentStopName={currentStopName}
+            lineColors={lineColors}
+          />
+        </div>
+      </div>
     </div>
   );
 }
