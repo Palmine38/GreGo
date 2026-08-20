@@ -1089,6 +1089,7 @@ export default function FastResearch() {
           activeLine={activeStopInfoLine}
           onBack={() => setActiveStopInfoLine(null)}
           getLineDisruptions={getLineDisruptions}
+          lineColors={lineColors}
         />
 
         {/* Panneau recherche */}

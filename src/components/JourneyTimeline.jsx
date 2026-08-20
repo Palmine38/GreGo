@@ -37,7 +37,14 @@ export function JourneyTimeline({
   const allLegs = (journey.allLegs || []).filter((leg, i, arr) => {
     if (leg.mode !== "WALK") return true;
     const isFirst = arr.slice(0, i).every((l) => l.mode === "WALK");
-    if (isFirst && !depIsAddress) return false;
+    // Si le départ est un arrêt, on masque seulement la micro-marche de liaison.
+    if (
+      isFirst &&
+      !depIsAddress &&
+      (leg.distance ?? 0) <= MAX_HIDDEN_WALK_TO_STOP_METERS
+    ) {
+      return false;
+    }
     const isLast = arr.slice(i + 1).every((l) => l.mode === "WALK");
     // Pour une destination arrêt, on masque uniquement la toute petite marche
     // générée entre le quai et le point exact de l'arrêt.

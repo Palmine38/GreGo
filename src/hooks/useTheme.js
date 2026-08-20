@@ -28,10 +28,21 @@ export function resolveTheme(theme) {
 export function applyTheme(theme) {
   const resolved = resolveTheme(theme);
   const root = document.documentElement;
+  const themeColors = {
+    [THEMES.LIGHT]: "#f8fafc",
+    [THEMES.DARK]: "#0f172a",
+    [THEMES.GRAY]: "#1e1e1e",
+  };
   root.classList.toggle("dark", resolved === THEMES.DARK);
   root.classList.toggle("gray", resolved === THEMES.GRAY);
   root.dataset.theme = resolved;
   root.style.colorScheme = resolved === THEMES.LIGHT ? "light" : "dark";
+  document
+    .querySelector('meta[name="theme-color"]')
+    ?.setAttribute("content", themeColors[resolved]);
+  document
+    .querySelector('meta[name="apple-mobile-web-app-status-bar-style"]')
+    ?.setAttribute("content", resolved === THEMES.LIGHT ? "default" : "black");
   return resolved;
 }
 

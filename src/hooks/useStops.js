@@ -45,18 +45,23 @@ async function fetchStops() {
         }
       });
       const networkLines = routes
-        .map((route) => route.id)
-        .filter((id) =>
-          NETWORK_PREFIXES.some((prefix) => id?.startsWith(`${prefix}:`)),
-        );
+        .filter((route) =>
+          NETWORK_PREFIXES.some((prefix) =>
+            route?.id?.startsWith(`${prefix}:`),
+          ),
+        )
+        .map((route) => ({
+          id: route.id,
+          shortName: route.shortName || route.id,
+        }));
 
       // name (lowercase) -> Map(positionKey -> position)
       const newMap = {};
       const list = [];
 
       await Promise.all(
-        networkLines.map(async (routeId) => {
-          const l = routeId;
+        networkLines.map(async ({ id: routeId, shortName }) => {
+          const l = shortName;
           try {
             const r = await fetch(
               `https://data.mobilites-m.fr/api/routers/default/index/routes/${routeId}/stops`,

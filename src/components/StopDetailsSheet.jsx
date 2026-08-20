@@ -1,13 +1,47 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
 import { Sheet } from "react-modal-sheet";
-import LineIcon from "./lines-icons.jsx";
+import LineIcon, { LINE_COLORS } from "./lines-icons.jsx";
 import { DisruptionItem } from "./DisruptionItem.jsx";
 import { useTheme } from "../hooks/useTheme.js";
 
 const lineKey = (value) =>
   String(value || "")
-    .replace("SEM:", "")
+    .trim()
+    .replace(/^[A-Z0-9]+:/i, "")
+    .trim()
     .toUpperCase();
+
+const lineSortRank = (line) => {
+  const letterIndex = ["A", "B", "C", "D", "E"].indexOf(line);
+  if (letterIndex >= 0) return [0, letterIndex, 0];
+
+  const cMatch = line.match(/^C(\d+)$/);
+  if (cMatch && Number(cMatch[1]) >= 1 && Number(cMatch[1]) <= 14) {
+    return [1, Number(cMatch[1]), 0];
+  }
+
+  const numberMatch = line.match(/^(\d+)$/);
+  if (numberMatch) return [2, Number(numberMatch[1]), 0];
+
+  if (line.startsWith("T")) return [3, 0, line];
+  return [4, 0, line];
+};
+
+const sortLineKeys = (lines) =>
+  [...new Set(lines.map(lineKey).filter(Boolean))].sort((first, second) => {
+    const firstRank = lineSortRank(first);
+    const secondRank = lineSortRank(second);
+    return (
+      firstRank[0] - secondRank[0] ||
+      firstRank[1] - secondRank[1] ||
+      String(firstRank[2]).localeCompare(String(secondRank[2]), "fr", {
+        numeric: true,
+      })
+    );
+  });
+
+const hasOfficialSchedulePdf = (line) =>
+  !/^(?:[A-E]|C[1-9])$/.test(lineKey(line));
 
 function linesFromStopTimes(payload) {
   const values = Array.isArray(payload) ? payload : [];
@@ -17,7 +51,7 @@ function linesFromStopTimes(payload) {
       item.pattern?.route?.shortName || item.pattern?.id?.split(":")?.[1];
     if (route) lines.add(lineKey(route));
   });
-  return [...lines];
+  return sortLineKeys([...lines]);
 }
 
 // Fonction générique : extrait les passages d'un payload OTP (temps réel OU
@@ -27,7 +61,7 @@ function linesFromStopTimes(payload) {
 // - targetLine présent : ne garde que cette ligne, direction seule
 function extractPassages(
   payload,
-  { targetLine, minMinutes = 0, maxMinutes = 90 } = {},
+  { targetLine, minMinutes = 0, maxMinutes = 90, allTimes = false } = {},
 ) {
   if (!Array.isArray(payload)) return [];
   const now = Date.now() / 1000;
@@ -51,7 +85,7 @@ function extractPassages(
       const arrival = st.realtimeArrival ?? st.scheduledArrival ?? 0;
       const ts = serviceDay + arrival;
       const minutes = Math.round((ts - now) / 60);
-      if (minutes < minMinutes || minutes > maxMinutes) return;
+      if (!allTimes && (minutes < minMinutes || minutes > maxMinutes)) return;
 
       // La direction réelle est sur chaque stoptime
       const direction =
@@ -59,13 +93,346 @@ function extractPassages(
 
       flat.push(
         wantedLine
-          ? { direction, min: minutes, ts: ts * 1000 }
-          : { route, direction, min: minutes, ts: ts * 1000 },
+          ? {
+              direction,
+              min: minutes,
+              ts: ts * 1000,
+              tripId: st.tripId || st.trip?.id,
+              stopId: st.stopId,
+              pattern: item.pattern,
+            }
+          : {
+              route,
+              direction,
+              min: minutes,
+              ts: ts * 1000,
+              tripId: st.tripId || st.trip?.id,
+              stopId: st.stopId,
+              pattern: item.pattern,
+            },
       );
     });
   });
 
-  return flat.sort((a, b) => a.min - b.min);
+  return flat.sort((a, b) => a.ts - b.ts);
+}
+
+const stopNameKey = (name) =>
+  String(name || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+
+const sameStopName = (first, second) => {
+  const a = stopNameKey(first);
+  const b = stopNameKey(second);
+  return Boolean(a && b && (a === b || a.endsWith(b) || b.endsWith(a)));
+};
+
+const routeStopsCache = new Map();
+const tripProgressCache = new Map();
+
+async function fetchRouteStops(routeId) {
+  if (!routeId) return [];
+  if (routeStopsCache.has(routeId)) return routeStopsCache.get(routeId);
+
+  const request = fetch(
+    `https://data.mobilites-m.fr/api/routers/default/index/routes/${encodeURIComponent(routeId)}/stops`,
+  )
+    .then((res) =>
+      res.ok ? res.json() : Promise.reject(new Error("Route indisponible")),
+    )
+    .then((stops) =>
+      (Array.isArray(stops) ? stops : [])
+        .map((stop) => ({ id: stop.id, name: stop.name }))
+        .filter((stop) => stop.id),
+    )
+    .catch((error) => {
+      routeStopsCache.delete(routeId);
+      throw error;
+    });
+  routeStopsCache.set(routeId, request);
+  return request;
+}
+
+// Les arrêts d'un pattern sont ordonnés dans le sens de circulation. On garde
+// uniquement la portion allant de l'arrêt sélectionné jusqu'au terminus du
+// pattern. `lastStop` est parfois un objet et parfois seulement un nom selon
+// la version de l'API OTP.
+function downstreamPatternStops(pattern, currentStopId, currentStopName) {
+  const patternStops =
+    pattern?.stops || pattern?.stopPattern?.stops || pattern?.stopTimes || [];
+  if (!Array.isArray(patternStops)) return [];
+
+  const lastStopName =
+    (typeof pattern?.lastStop === "string"
+      ? pattern.lastStop
+      : pattern?.lastStop?.name) ||
+    pattern?.lastStopName ||
+    pattern?.headsign ||
+    "";
+  const currentKey = stopNameKey(currentStopName);
+  const lastKey = stopNameKey(lastStopName);
+  const startIndex = Math.max(
+    0,
+    patternStops.findIndex(
+      (item) =>
+        item.id === currentStopId || sameStopName(item.name, currentKey),
+    ),
+  );
+  const endOffset = patternStops
+    .slice(startIndex)
+    .findIndex((item) => sameStopName(item.name, lastKey));
+  const endIndex =
+    endOffset >= 0 ? startIndex + endOffset : patternStops.length - 1;
+
+  return patternStops
+    .slice(startIndex, endIndex + 1)
+    .map((item) => ({ id: item.id || item.stopId, name: item.name }))
+    .filter((item) => item.id);
+}
+
+async function fetchDownstreamStops(
+  pattern,
+  currentStopId,
+  currentStopName,
+  fallbackRouteId,
+) {
+  const stopsFromPattern = downstreamPatternStops(
+    pattern,
+    currentStopId,
+    currentStopName,
+  );
+  if (stopsFromPattern.length > 0) {
+    return stopsFromPattern.filter((stop) => stop.id !== currentStopId);
+  }
+
+  // L'endpoint RT fournit le terminus mais pas les arrêts du parcours. La
+  // liste ordonnée de la ligne est donc chargée une fois et mise en cache.
+  const routeId =
+    (typeof pattern?.route === "string" ? pattern.route : pattern?.route?.id) ||
+    pattern?.routeId ||
+    // Certains patterns OTP ont un id de la forme "SEM:E:..." sans
+    // exposer `route.id` : les deux premiers segments sont l'id de ligne.
+    pattern?.id?.split(":").slice(0, 2).join(":") ||
+    fallbackRouteId;
+  const routeStops = await fetchRouteStops(routeId);
+  const lastStopName =
+    (typeof pattern?.lastStop === "string"
+      ? pattern.lastStop
+      : pattern?.lastStop?.name) ||
+    pattern?.lastStopName ||
+    pattern?.headsign ||
+    "";
+  const lastStopId =
+    typeof pattern?.lastStop === "string"
+      ? pattern.lastStop
+      : pattern?.lastStop?.id;
+  const currentIndex = routeStops.findIndex(
+    (stop) => stop.id === currentStopId,
+  );
+  // lastStop est un identifiant de poteau : c'est indispensable sur les
+  // terminus dont les deux quais portent le même nom.
+  const lastIndex = lastStopId
+    ? routeStops.findIndex((stop) => stop.id === lastStopId)
+    : routeStops.findIndex((stop) => sameStopName(stop.name, lastStopName));
+  if (currentIndex === -1 || lastIndex === -1) return [];
+
+  const segment = routeStops.slice(
+    Math.min(currentIndex, lastIndex),
+    Math.max(currentIndex, lastIndex) + 1,
+  );
+  const directionStops =
+    currentIndex <= lastIndex ? segment : segment.reverse();
+  return directionStops.slice(1);
+}
+
+function stopTimeForTrip(payload, tripId) {
+  if (!Array.isArray(payload) || !tripId) return null;
+  for (const item of payload) {
+    for (const time of item.times || []) {
+      if ((time.tripId || time.trip?.id) !== tripId) continue;
+      const seconds =
+        (time.serviceDay ?? 0) +
+        (time.realtimeArrival ?? time.scheduledArrival ?? 0);
+      if (!Number.isFinite(seconds)) continue;
+      return { ts: seconds * 1000 };
+    }
+  }
+  return null;
+}
+
+function fetchTripProgress(passage, currentStopName) {
+  const cacheKey = `${passage.tripId}|${passage.stopId}|${passage.pattern?.id}`;
+  const cached = tripProgressCache.get(cacheKey);
+  if (cached && Date.now() - cached.createdAt < 30_000) return cached.promise;
+
+  const promise = fetchDownstreamStops(
+    passage.pattern,
+    passage.stopId,
+    currentStopName,
+    `SEM:${passage.route}`,
+  )
+    .then((stops) =>
+      Promise.all(
+        stops.map(async (stop) => {
+          const res = await fetch(
+            `https://data.mobilites-m.fr/api/routers/default/index/stops/${encodeURIComponent(stop.id)}/stoptimes`,
+          );
+          if (!res.ok) {
+            throw new Error("Échec du chargement des passages du trajet");
+          }
+          return {
+            ...stop,
+            passage: stopTimeForTrip(await res.json(), passage.tripId),
+          };
+        }),
+      ),
+    )
+    .catch((error) => {
+      tripProgressCache.delete(cacheKey);
+      throw error;
+    });
+  tripProgressCache.set(cacheKey, { createdAt: Date.now(), promise });
+  return promise;
+}
+
+function TripProgress({ passage, currentStopName, lineColors }) {
+  const [state, setState] = useState({
+    loading: true,
+    stops: [],
+    error: false,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchTripProgress(passage, currentStopName)
+      .then((results) => {
+        if (!cancelled) {
+          setState({
+            loading: false,
+            stops: results,
+            error: false,
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setState({ loading: false, stops: [], error: true });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    passage.tripId,
+    passage.stopId,
+    passage.pattern?.id,
+    passage.route,
+    currentStopName,
+  ]);
+
+  if (state.loading) {
+    return (
+      <p className="px-3 pb-1 text-sm text-slate-500">Chargement du trajet…</p>
+    );
+  }
+  if (state.error || state.stops.length === 0) {
+    return (
+      <p className="px-3 pb-1 text-sm text-slate-500">
+        Le suivi de ce véhicule est indisponible.
+      </p>
+    );
+  }
+
+  const line = lineKey(passage.route);
+  // Même priorité que JourneyTimeline : couleur locale définie pour les C,
+  // sinon couleur officielle chargée depuis /index/routes.
+  const lineColor = LINE_COLORS[line] || lineColors?.[line] || "#6B7280";
+
+  return (
+    <div className="px-3 pb-3 pt-1">
+      <p className="text-xs font-bold uppercase tracking-widest border-t border-slate-300 text-slate-400"></p>
+      <div className="mt-3">
+        {/* Même départ que la timeline d'un itinéraire : icône de ligne,
+            arrêt courant, puis barre colorée. */}
+        <div className="flex items-start gap-3">
+          <div className="flex w-8 shrink-0 flex-col items-center">
+            <LineIcon lineKey={line} size="w-8 h-8" />
+            <span
+              className="w-1 min-h-5 flex-1"
+              style={{ backgroundColor: lineColor }}
+            />
+          </div>
+          <div className="min-w-0 flex-1 pb-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-semibold leading-tight text-slate-900">
+                  {currentStopName.replace(/^[^,]+,\s*/, "")}
+                </p>
+                <p className="mt-0.5 text-[12.5px] text-slate-600">
+                  Arrêt sélectionné
+                </p>
+              </div>
+              <p className="shrink-0 text-sm font-bold tabular-nums text-slate-900">
+                {formatTimeAt(passage.ts)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {state.stops.map((stop, index) => {
+          const isLast = index === state.stops.length - 1;
+          const hasRealtime = Boolean(stop.passage);
+          return (
+            <div key={stop.id} className="flex items-start gap-3">
+              <div className="flex w-8 shrink-0 flex-col items-center">
+                <span
+                  className="h-3 w-1"
+                  style={{ backgroundColor: lineColor }}
+                />
+                <span
+                  className={`shrink-0 rounded-full ${
+                    isLast ? "size-4" : "size-3 border-2 bg-white"
+                  }`}
+                  style={
+                    isLast
+                      ? { backgroundColor: lineColor }
+                      : { borderColor: lineColor }
+                  }
+                />
+                {!isLast && (
+                  <span
+                    className="w-1 min-h-7 flex-1"
+                    style={{ backgroundColor: lineColor }}
+                  />
+                )}
+              </div>
+              <div className={`min-w-0 flex-1 ${isLast ? "pb-0" : "pb-3"}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold leading-tight text-slate-800">
+                      {stop.name.replace(/^[^,]+,\s*/, "")}
+                    </p>
+                    {isLast && (
+                      <p className="mt-0.5 text-[12.5px] text-slate-600">
+                        Terminus
+                      </p>
+                    )}
+                  </div>
+                  <p className="shrink-0 text-sm font-bold tabular-nums text-slate-900">
+                    {hasRealtime
+                      ? formatTimeAt(stop.passage.ts)
+                      : "Non communiqué"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 // Format "XX:XX" à partir d'un timestamp absolu (ms) — utilisé pour l'heure
@@ -81,12 +448,26 @@ function formatHourMinAt(ts) {
   const d = new Date(ts);
   return `${d.getHours().toString().padStart(2, "0")}h${d.getMinutes().toString().padStart(2, "0")}`;
 }
-// AAAAMMJJ attendu par /index/clusters/:code/stoptimes/:date
-function formatDateParam(date) {
+
+function getRemainingTimeParts(minutes) {
+  if (minutes > 59) {
+    return {
+      hours: Math.floor(minutes / 60),
+      minutes: minutes % 60,
+    };
+  }
+  return { hours: 0, minutes };
+}
+
+function formatDateInputValue(date) {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
-  return `${y}${m}${d}`;
+  return `${y}-${m}-${d}`;
+}
+
+function dateInputToParam(value) {
+  return value.replace(/-/g, "");
 }
 
 // Cache mémoire (hors composant) des horaires théoriques déjà chargés,
@@ -167,12 +548,27 @@ function PassageCard({
   ts,
   showLine = true,
   theoretical = false,
+  onClick,
+  expanded = false,
+  currentStopName,
+  tripId,
+  stopId,
+  pattern,
+  lineColors,
 }) {
+  const theme = useTheme();
   const isNow = min === 0;
   const isSoon = min > 0 && min <= 5;
+  const remainingTime = getRemainingTimeParts(min);
+  const activeBackgroundClass =
+    theme === "dark"
+      ? "active:bg-slate-700"
+      : theme === "gray"
+        ? "active:bg-zinc-700"
+        : "active:bg-slate-50";
 
-  return (
-    <div className="w-full flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-3xl shadow-md">
+  const content = (
+    <>
       {showLine && (
         <>
           <div className="w-12 h-12 flex-shrink-0 flex items-center justify-center">
@@ -215,13 +611,52 @@ function PassageCard({
               </>
             ) : (
               <>
-                <span className="font-bold">{min}</span>
-                <span className="font-medium">m</span>
+                {remainingTime.hours > 0 && (
+                  <>
+                    <span className="font-bold">{remainingTime.hours}</span>
+                    <span className="font-medium">h</span>
+                    {remainingTime.minutes > 0 && <span> </span>}
+                  </>
+                )}
+                {remainingTime.minutes > 0 && (
+                  <>
+                    <span className="font-bold">
+                      {remainingTime.hours > 0
+                        ? String(remainingTime.minutes).padStart(2, "0")
+                        : remainingTime.minutes}
+                    </span>
+                    <span className="font-medium">m</span>
+                  </>
+                )}
               </>
             )}
           </p>
         )}
       </div>
+    </>
+  );
+
+  return (
+    <div className="w-full overflow-hidden bg-white border border-gray-200 rounded-3xl shadow-md">
+      {onClick ? (
+        <button
+          type="button"
+          onClick={onClick}
+          aria-expanded={expanded}
+          className={`w-full flex items-center gap-3 p-3 text-left ${activeBackgroundClass}`}
+        >
+          {content}
+        </button>
+      ) : (
+        <div className="flex items-center gap-3 p-3">{content}</div>
+      )}
+      {expanded && (
+        <TripProgress
+          passage={{ route, direction, min, ts, tripId, stopId, pattern }}
+          currentStopName={currentStopName}
+          lineColors={lineColors}
+        />
+      )}
     </div>
   );
 }
@@ -231,7 +666,10 @@ function PassageList({
   loading,
   showLine = true,
   theoretical = false,
+  currentStopName,
+  lineColors,
 }) {
+  const [selectedPassage, setSelectedPassage] = useState(null);
   if (loading && passages.length === 0) {
     return (
       <div className="space-y-2">
@@ -264,6 +702,18 @@ function PassageList({
           ts={p.ts}
           showLine={showLine}
           theoretical={theoretical}
+          currentStopName={currentStopName}
+          lineColors={lineColors}
+          tripId={p.tripId}
+          stopId={p.stopId}
+          pattern={p.pattern}
+          expanded={selectedPassage === p}
+          onClick={
+            !theoretical && p.tripId && p.pattern
+              ? () =>
+                  setSelectedPassage((selected) => (selected === p ? null : p))
+              : undefined
+          }
         />
       ))}
     </div>
@@ -281,12 +731,17 @@ function PassageSection({
   clusterId,
   targetLine,
   showLine,
+  currentStopName,
+  lineColors,
 }) {
   const [manualTheoretical, setManualTheoretical] = useState(false);
   const [dayPayload, setDayPayload] = useState(null);
   const [loadedDate, setLoadedDate] = useState(null);
   const [theoreticalLoading, setTheoreticalLoading] = useState(false);
   const [theoreticalError, setTheoreticalError] = useState(false);
+  const [theoreticalDate, setTheoreticalDate] = useState(() =>
+    formatDateInputValue(new Date()),
+  );
   // Ref miroir de dayPayload : évite de dépendre d'une référence d'objet
   // dans le tableau de deps du useEffect ci-dessous, qui provoquait un
   // rechargement en boucle (loading infini) sur certains enchaînements
@@ -303,6 +758,7 @@ function PassageSection({
     dayPayloadRef.current = null;
     setLoadedDate(null);
     setTheoreticalError(false);
+    setTheoreticalDate(formatDateInputValue(new Date()));
   }, [clusterId, targetLine]);
 
   // Si le temps réel redevient disponible, on repasse dessus automatiquement
@@ -313,7 +769,7 @@ function PassageSection({
   useEffect(() => {
     if (!isTheoreticalView || !clusterId) return undefined;
 
-    const dateStr = formatDateParam(new Date());
+    const dateStr = dateInputToParam(theoreticalDate);
     if (dateStr === loadedDate && dayPayloadRef.current) return undefined;
 
     let cancelled = false;
@@ -341,7 +797,7 @@ function PassageSection({
     return () => {
       cancelled = true;
     };
-  }, [isTheoreticalView, clusterId, loadedDate]);
+  }, [isTheoreticalView, clusterId, loadedDate, theoreticalDate]);
 
   const theoreticalPassages = useMemo(() => {
     if (!dayPayload) return [];
@@ -350,8 +806,7 @@ function PassageSection({
     // au plus tard (23h59), sans filtrer sur une fenêtre relative à "maintenant".
     return extractPassages(dayPayload, {
       targetLine,
-      minMinutes: -2000,
-      maxMinutes: 2000,
+      allTimes: true,
     });
   }, [dayPayload, targetLine]);
 
@@ -367,9 +822,27 @@ function PassageSection({
             <span />
           )}
           {isTheoreticalView && (
-            <span className="whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
-              Horaires théoriques
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600">
+                Horaires théoriques
+              </span>
+              <label className="flex items-center gap-1.5 pr-2 text-xs font-semibold text-slate-500">
+                <span className="sr-only">Choisir une date</span>
+                <input
+                  type="date"
+                  value={theoreticalDate}
+                  aria-label="Choisir une date"
+                  onChange={(event) => {
+                    setTheoreticalDate(event.target.value);
+                    setDayPayload(null);
+                    dayPayloadRef.current = null;
+                    setLoadedDate(null);
+                    setTheoreticalError(false);
+                  }}
+                  className="-ml-4 h-7 origin-right scale-[0.82] rounded-lg border border-slate-200 bg-white px-2 text-[16px] leading-none font-semibold text-slate-600"
+                />
+              </label>
+            </div>
           )}
         </div>
       )}
@@ -388,6 +861,8 @@ function PassageSection({
               loading={theoreticalLoading}
               showLine={showLine}
               theoretical
+              currentStopName={currentStopName}
+              lineColors={lineColors}
             />
           )}
 
@@ -409,6 +884,8 @@ function PassageSection({
             passages={realtimePassages}
             loading={realtimeLoading}
             showLine={showLine}
+            currentStopName={currentStopName}
+            lineColors={lineColors}
           />
           <div className="mt-3 flex justify-center">
             <button
@@ -434,6 +911,7 @@ export function StopDetailsSheet({
   activeLine,
   onBack,
   getLineDisruptions,
+  lineColors,
 }) {
   const theme = useTheme();
   const disruptedColor = theme !== "light" ? "#ea580c" : "#e61e1e";
@@ -476,11 +954,7 @@ export function StopDetailsSheet({
   );
 
   const lines = useMemo(
-    () => [
-      ...new Set(
-        [...(stop?.lines || []), ...apiLines].map(lineKey).filter(Boolean),
-      ),
-    ],
+    () => sortLineKeys([...(stop?.lines || []), ...apiLines]),
     [stop?.lines, apiLines],
   );
 
@@ -620,6 +1094,8 @@ export function StopDetailsSheet({
                   realtimeLoading={loading}
                   clusterId={stop.stopTimesClusterId}
                   showLine
+                  currentStopName={stop.name}
+                  lineColors={lineColors}
                 />
               </div>
             </div>
@@ -704,28 +1180,30 @@ export function StopDetailsSheet({
                       </svg>
                       Plan en PDF
                     </a>
-                    <a
-                      href={`https://www.reso-m.fr/ftp/fiche_horaires/fiche_horaires_2014/PLAN_${lineKey(activeLine)}.pdf`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className={`flex items-center gap-1.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${pdfActionClass}`}
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        strokeWidth="1.5"
-                        stroke="currentColor"
-                        className="size-5"
+                    {hasOfficialSchedulePdf(activeLine) && (
+                      <a
+                        href={`https://www.reso-m.fr/ftp/fiche_horaires/fiche_horaires_2014/HORAIRES_${lineKey(activeLine)}.pdf`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={`flex items-center gap-1.5 text-xs font-semibold transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${pdfActionClass}`}
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
-                        />
-                      </svg>
-                      Horaires en PDF
-                    </a>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          strokeWidth="1.5"
+                          stroke="currentColor"
+                          className="size-5"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 1 1 18 0Z"
+                          />
+                        </svg>
+                        Horaires en PDF
+                      </a>
+                    )}
                   </div>
 
                   <div className="mt-5">
@@ -735,6 +1213,8 @@ export function StopDetailsSheet({
                       clusterId={stop.stopTimesClusterId}
                       targetLine={activeLine}
                       showLine={false}
+                      currentStopName={stop.name}
+                      lineColors={lineColors}
                     />
                   </div>
                 </>

@@ -12,6 +12,8 @@
     <link rel="canonical" href="https://gre-go.app/" />
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f8fafc" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
     <title>GreGo | Horaires Tram & Bus à Grenoble en Temps Réel</title>
 
@@ -142,6 +144,16 @@
           var bg =
             { light: "#F8FAFC", dark: "#0F172A", gray: "#1E1E1E" }[theme] ||
             "#F8FAFC";
+          var themeColor = document.querySelector('meta[name="theme-color"]');
+          if (themeColor) themeColor.setAttribute("content", bg);
+          var appleStatusBar = document.querySelector(
+            'meta[name="apple-mobile-web-app-status-bar-style"]',
+          );
+          if (appleStatusBar)
+            appleStatusBar.setAttribute(
+              "content",
+              theme === "light" ? "default" : "black",
+            );
           var logo =
             theme === "light"
               ? "/logos/light_no_bg_banner.png"
