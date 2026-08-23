@@ -1,5 +1,6 @@
 ﻿/* @refresh reset */
 import React, { useEffect, useState } from "react";
+import { getCachedRoutes, getRoutes } from "../utils/routesCache.js";
 
 export const LINE_COLORS = {
   C11: "#EF7C00",
@@ -20,8 +21,6 @@ export const LINE_COLORS = {
 };
 
 const lineDataCache = new Map();
-let routesPromise = null;
-let routesCache = null;
 
 const makeLineData = (route, effectiveKey, cacheKey) => ({
   shortName: route?.shortName || effectiveKey,
@@ -30,28 +29,12 @@ const makeLineData = (route, effectiveKey, cacheKey) => ({
   type: route?.type || "",
 });
 
-const fetchAllRoutes = async () => {
-  if (routesCache) return routesCache;
-  if (routesPromise) return routesPromise;
-  routesPromise = fetch(
-    "https://data.mobilites-m.fr/api/routers/default/index/routes",
-  )
-    .then((res) => res.json())
-    .then((data) => {
-      routesCache = data || [];
-      return routesCache;
-    })
-    .catch((err) => {
-      console.error("Erreur chargement routes:", err);
-      routesCache = [];
-      return routesCache;
-    });
-  return routesPromise;
-};
+const fetchAllRoutes = getRoutes;
 
 const getLineDataFromRouteCache = (lineKeyRaw, effectiveKey, cacheKey) => {
-  if (!routesCache) return null;
-  const route = routesCache.find((r) => {
+  const routes = getCachedRoutes();
+  if (!routes) return null;
+  const route = routes.find((r) => {
     const shortName = (r.shortName || "").toUpperCase();
     const routeId = (r.id || "").toUpperCase();
     return (

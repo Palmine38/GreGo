@@ -40,6 +40,17 @@ import {
   normalizeSearchText,
 } from "./utils/addressSuggestions.js";
 import { getSearchErrorMessage } from "./utils/searchError.js";
+import {
+  completeTripsLoadMetric,
+  startTripsLoadMetric,
+} from "./utils/tripsLoadMetric.js";
+import {
+  TRIPS_ONBOARDING_STORAGE_KEY,
+} from "./utils/tripsOnboarding.js";
+import {
+  INSTALL_PROMPT_RESOLVED_EVENT,
+  isInstallPromptResolved,
+} from "./utils/installPromptGate.js";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const DEFAULT_TRAJET = {
@@ -53,6 +64,31 @@ const DEFAULT_TRAJET = {
 const TRAJET_KEYS = Array.from({ length: 10 }, (_, i) => `T${i + 1}`);
 const MAX_TRAJETS = TRAJET_KEYS.length;
 const TRAJET_ORDER_STORAGE_KEY = "tag-express-trajet-order";
+
+const ONBOARDING_STEPS = [
+  {
+    title: "Bienvenue sur GreGo",
+    description:
+      "On va creer ton premier trajet. Appuie sur le bouton + pour ouvrir la configuration.",
+    selector: '[data-onboarding="open-config"]',
+  },
+  {
+    title: "Etape 1",
+    description: "Choisis ton arret de depart dans le champ Depart.",
+    selector: '[data-onboarding="dep-input"]',
+  },
+  {
+    title: "Etape 2",
+    description: "Choisis ensuite ton arret d'arrivee dans le champ Arrivee.",
+    selector: '[data-onboarding="arr-input"]',
+  },
+  {
+    title: "Etape 3",
+    description:
+      "Parfait. Appuie sur Rechercher pour enregistrer ton premier trajet.",
+    selector: '[data-onboarding="search-button"]',
+  },
+];
 
 const formatTimeInputValue = (date = new Date()) =>
   `${String(date.getHours()).padStart(2, "0")}:${String(
@@ -172,6 +208,26 @@ export default function MesTrajets() {
   // n'est pas revenu (ou immédiatement masqué si aucun trajet n'est
   // configuré). Logique et rendu délégués à components/SplashScreen.jsx.
   const { splashVisible, markSplashDone } = useSplashScreen();
+  const tripsLoadMetricDoneRef = useRef(false);
+  const tripsLoadMetricSettlingRef = useRef(false);
+
+  useEffect(() => {
+    startTripsLoadMetric();
+  }, []);
+
+  // Deux frames garantissent que React a appliqué les résultats avant de
+  // figer le chrono affiché dans le DevOverlay.
+  const completeTripsLoadAfterRender = () => {
+    if (tripsLoadMetricDoneRef.current || tripsLoadMetricSettlingRef.current)
+      return;
+    tripsLoadMetricSettlingRef.current = true;
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        tripsLoadMetricDoneRef.current = true;
+        completeTripsLoadMetric();
+      });
+    });
+  };
 
   useEffect(() => {
     trajetsRef.current = trajets;
@@ -271,9 +327,253 @@ export default function MesTrajets() {
   }, [trajetOrder]);
   const isConfigured = (t) => !!(trajets[t]?.depName && trajets[t]?.arrName);
   const configuredTrajetKeys = trajetOrder.filter(isConfigured);
+  const [inputsOpen, setInputsOpen] = useState(false);
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [mapPickerOpen, setMapPickerOpen] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(null);
+  const [onboardingTargetRect, setOnboardingTargetRect] = useState(null);
+  const [onboardingTargetFocused, setOnboardingTargetFocused] = useState(false);
+  const [showOnboardingCongrats, setShowOnboardingCongrats] = useState(false);
+  const [installPromptResolved, setInstallPromptResolved] = useState(
+    isInstallPromptResolved,
+  );
+  const onboardingActive = onboardingStep !== null;
+  const onboardingStepConfig =
+    onboardingStep !== null ? ONBOARDING_STEPS[onboardingStep] : null;
+
+  const finishOnboarding = () => {
+    localStorage.setItem(TRIPS_ONBOARDING_STORAGE_KEY, "done");
+    setOnboardingStep(null);
+    setOnboardingTargetRect(null);
+    setShowOnboardingCongrats(true);
+  };
+
+  const skipOnboarding = () => {
+    localStorage.setItem(TRIPS_ONBOARDING_STORAGE_KEY, "dismissed");
+    setOnboardingStep(null);
+    setOnboardingTargetRect(null);
+  };
+
+  useEffect(() => {
+    if (!showOnboardingCongrats) return;
+    const timer = window.setTimeout(() => {
+      setShowOnboardingCongrats(false);
+    }, 4500);
+    return () => window.clearTimeout(timer);
+  }, [showOnboardingCongrats]);
+
+  useEffect(() => {
+    const resolve = () => setInstallPromptResolved(true);
+    window.addEventListener(INSTALL_PROMPT_RESOLVED_EVENT, resolve);
+    if (isInstallPromptResolved()) resolve();
+    return () =>
+      window.removeEventListener(INSTALL_PROMPT_RESOLVED_EVENT, resolve);
+  }, []);
+
+  const onboardingCardStyle = useMemo(() => {
+    if (onboardingStep === 0) {
+      const cardWidth = Math.min(window.innerWidth - 32, 340);
+      return {
+        left: "50%",
+        top: 16,
+        transform: "translateX(-50%)",
+        width: cardWidth,
+      };
+    }
+
+    if (inputsOpen && (onboardingStep === 1 || onboardingStep === 2)) {
+      const cardWidth = Math.min(window.innerWidth - 32, 340);
+      return {
+        left: "50%",
+        top: 16,
+        transform: "translateX(-50%)",
+        width: cardWidth,
+      };
+    }
+
+    if (onboardingStep === 3) {
+      const cardWidth = Math.min(window.innerWidth - 32, 340);
+      return {
+        left: "50%",
+        top: 20,
+        transform: "translateX(-50%)",
+        width: cardWidth,
+      };
+    }
+
+    if (!onboardingTargetRect) {
+      return {
+        left: "50%",
+        top: "50%",
+        transform: "translate(-50%, -50%)",
+      };
+    }
+
+    const cardWidth = Math.min(window.innerWidth - 32, 340);
+    const centeredLeft =
+      onboardingTargetRect.left +
+      onboardingTargetRect.width / 2 -
+      cardWidth / 2;
+    const left = Math.max(
+      16,
+      Math.min(centeredLeft, window.innerWidth - cardWidth - 16),
+    );
+    const roomBelow =
+      window.innerHeight -
+      (onboardingTargetRect.top + onboardingTargetRect.height);
+    const placeBelow = roomBelow >= 190;
+
+    return {
+      left,
+      top: placeBelow
+        ? onboardingTargetRect.top + onboardingTargetRect.height + 12
+        : Math.max(16, onboardingTargetRect.top - 162),
+      transform: "none",
+      width: cardWidth,
+    };
+  }, [onboardingTargetRect, onboardingStep, inputsOpen]);
+
+  useEffect(() => {
+    if (!loadedFromStorage || !installPromptResolved) return;
+    if (onboardingStep !== null) return;
+    if (localStorage.getItem(TRIPS_ONBOARDING_STORAGE_KEY)) return;
+
+    let hasConfiguredTrajet = configuredTrajetKeys.length > 0;
+    if (!hasConfiguredTrajet) {
+      try {
+        const raw = localStorage.getItem("tag-express-trajets");
+        const parsed = raw ? JSON.parse(raw) : null;
+        hasConfiguredTrajet = Object.values(parsed || {}).some(
+          (trajet) => trajet?.depId && trajet?.arrId,
+        );
+      } catch {
+        hasConfiguredTrajet = false;
+      }
+    }
+
+    if (!hasConfiguredTrajet) {
+      setOnboardingStep(0);
+    }
+  }, [
+    loadedFromStorage,
+    installPromptResolved,
+    onboardingStep,
+    configuredTrajetKeys.length,
+  ]);
+
+  useEffect(() => {
+    if (onboardingStep === null) return;
+
+    if (onboardingStep === 0 && inputsOpen) {
+      setOnboardingStep(1);
+      return;
+    }
+
+    if (onboardingStep === 1 && dep.trim() && !onboardingTargetFocused) {
+      setOnboardingStep(2);
+      return;
+    }
+
+    if (onboardingStep === 2 && arr.trim() && !onboardingTargetFocused) {
+      setOnboardingStep(3);
+      return;
+    }
+
+    if (onboardingStep === 3) {
+      const trajet = trajets[currentTrajet];
+      if (trajet?.depId && trajet?.arrId) {
+        finishOnboarding();
+      }
+    }
+  }, [
+    onboardingStep,
+    inputsOpen,
+    dep,
+    arr,
+    trajets,
+    currentTrajet,
+    onboardingTargetFocused,
+  ]);
+
+  useEffect(() => {
+    if (onboardingStep === null) {
+      setOnboardingTargetRect(null);
+      return;
+    }
+
+    const selector = ONBOARDING_STEPS[onboardingStep]?.selector;
+    if (!selector) {
+      setOnboardingTargetRect(null);
+      return;
+    }
+
+    const updateRect = () => {
+      const target = document.querySelector(selector);
+      if (!target) {
+        setOnboardingTargetRect(null);
+        return;
+      }
+
+      const rect = target.getBoundingClientRect();
+      setOnboardingTargetRect({
+        top: rect.top,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height,
+      });
+    };
+
+    updateRect();
+    const delayedUpdate = window.setTimeout(updateRect, 220);
+    const interval = window.setInterval(updateRect, 350);
+    window.addEventListener("resize", updateRect);
+    window.addEventListener("scroll", updateRect, true);
+
+    return () => {
+      window.clearTimeout(delayedUpdate);
+      window.clearInterval(interval);
+      window.removeEventListener("resize", updateRect);
+      window.removeEventListener("scroll", updateRect, true);
+    };
+  }, [
+    onboardingStep,
+    inputsOpen,
+    mapPickerOpen,
+    renameOpen,
+    configuredTrajetKeys.length,
+  ]);
+
+  useEffect(() => {
+    const isInputStep = onboardingStep === 1 || onboardingStep === 2;
+    if (!onboardingActive || !inputsOpen || !isInputStep) {
+      setOnboardingTargetFocused(false);
+      return;
+    }
+
+    const selector = ONBOARDING_STEPS[onboardingStep]?.selector;
+    if (!selector) {
+      setOnboardingTargetFocused(false);
+      return;
+    }
+
+    const updateFocusState = () => {
+      const target = document.querySelector(selector);
+      setOnboardingTargetFocused(
+        Boolean(target && document.activeElement === target),
+      );
+    };
+
+    updateFocusState();
+    document.addEventListener("focusin", updateFocusState);
+    document.addEventListener("focusout", updateFocusState);
+
+    return () => {
+      document.removeEventListener("focusin", updateFocusState);
+      document.removeEventListener("focusout", updateFocusState);
+    };
+  }, [onboardingActive, onboardingStep, inputsOpen]);
 
   // ── UI panels ─────────────────────────────────────────────────────────────
-  const [inputsOpen, setInputsOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showRefreshCheck, setShowRefreshCheck] = useState(false);
@@ -281,11 +581,15 @@ export default function MesTrajets() {
     () => window.scrollY > 48,
   );
   const [isLeavingTrips, setIsLeavingTrips] = useState(false);
-  const [renameOpen, setRenameOpen] = useState(false);
   const [newTrajetName, setNewTrajetName] = useState("");
-  const [mapPickerOpen, setMapPickerOpen] = useState(false);
   const [mapPickerTarget, setMapPickerTarget] = useState("dep");
   const [detailMapOpen, setDetailMapOpen] = useState(false);
+  const onboardingNeedsConfigOpen =
+    onboardingActive && onboardingStep > 0 && !inputsOpen;
+  const hideOnboardingGuidance =
+    inputsOpen &&
+    (onboardingStep === 1 || onboardingStep === 2) &&
+    onboardingTargetFocused;
   const inputsOpenBeforeRenameRef = useRef(false);
   const initialValuesRef = useRef({
     dep: "",
@@ -414,6 +718,7 @@ export default function MesTrajets() {
     const activeTrajet = cleanedTrajets[activeKey];
     if (!activeTrajet?.depId || !activeTrajet?.arrId) {
       markSplashDone();
+      completeTripsLoadAfterRender();
     }
 
     setLoadedFromStorage(true);
@@ -533,7 +838,10 @@ export default function MesTrajets() {
         depName = CURRENT_LOCATION_LABEL;
       } catch (err) {
         console.error("searchById: position indisponible", err);
-        if (trajetKey === currentTrajetRef.current) markSplashDone();
+        if (trajetKey === currentTrajetRef.current) {
+          markSplashDone();
+          completeTripsLoadAfterRender();
+        }
         return; // pas de position dispo, on annule cette recherche
       }
     }
@@ -543,7 +851,10 @@ export default function MesTrajets() {
     const depId = fromCoords ? trajet.depId : depPosition?.id || trajet.depId;
     const arrId = arrPosition?.id || trajet.arrId;
     if (!depId || !arrId) {
-      if (trajetKey === currentTrajetRef.current) markSplashDone();
+      if (trajetKey === currentTrajetRef.current) {
+        markSplashDone();
+        completeTripsLoadAfterRender();
+      }
       return;
     }
 
@@ -636,10 +947,14 @@ export default function MesTrajets() {
         setSearchBaseDate(now);
         setSearchTime(formatTimeInputValue(now));
         markSplashDone();
+        completeTripsLoadAfterRender();
       }
     } catch (err) {
       console.error("searchById error:", err);
-      if (trajetKey === currentTrajetRef.current) markSplashDone();
+      if (trajetKey === currentTrajetRef.current) {
+        markSplashDone();
+        completeTripsLoadAfterRender();
+      }
     }
   };
 
@@ -1383,6 +1698,119 @@ export default function MesTrajets() {
         />
       )}
 
+      {onboardingActive && (
+        <>
+          {!hideOnboardingGuidance && (
+            <div
+              className={`pointer-events-none fixed inset-0 z-[10020] ${
+                inputsOpen && (onboardingStep === 1 || onboardingStep === 2)
+                  ? "bg-slate-950/20"
+                  : "bg-slate-950/35"
+              }`}
+              aria-hidden="true"
+            />
+          )}
+
+          {onboardingTargetRect && !hideOnboardingGuidance && (
+            <div
+              className="pointer-events-none fixed z-[10021] rounded-2xl border-2 border-blue-300 shadow-lg"
+              style={{
+                top: onboardingTargetRect.top - 6,
+                left: onboardingTargetRect.left - 6,
+                width: onboardingTargetRect.width + 12,
+                height: onboardingTargetRect.height + 12,
+              }}
+              aria-hidden="true"
+            />
+          )}
+
+          {!hideOnboardingGuidance && (
+            <div
+              className="fixed z-[10022] rounded-2xl border border-blue-200 bg-white p-4 shadow-2xl"
+              style={onboardingCardStyle}
+              role="dialog"
+              aria-live="polite"
+            >
+              <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Tutoriel{" "}
+                {Math.min((onboardingStep || 0) + 1, ONBOARDING_STEPS.length)}/
+                {ONBOARDING_STEPS.length}
+              </div>
+              <h2 className="text-base font-bold text-slate-900">
+                {onboardingStepConfig?.title}
+              </h2>
+              <p className="mt-1 text-sm text-slate-600">
+                {onboardingNeedsConfigOpen
+                  ? "Le panneau est ferme. Rouvre la configuration pour continuer."
+                  : onboardingStepConfig?.description}
+              </p>
+
+              <div className="mt-4 flex items-center justify-between gap-2">
+                {onboardingStep === 0 ? (
+                  <button
+                    type="button"
+                    onClick={openInputs}
+                    className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  >
+                    Ouvrir la configuration
+                  </button>
+                ) : onboardingNeedsConfigOpen ? (
+                  <button
+                    type="button"
+                    onClick={openInputs}
+                    className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  >
+                    Rouvrir
+                  </button>
+                ) : onboardingStep === 3 ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      search(0, {
+                        manual: true,
+                        searchDate: searchBaseDate,
+                        searchTime,
+                        departureTime,
+                        arrivalTime,
+                      })
+                    }
+                    className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                  >
+                    Rechercher
+                  </button>
+                ) : (
+                  <span className="text-xs font-medium text-slate-500"></span>
+                )}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {showOnboardingCongrats && (
+        <div
+          className="fixed left-1/2 top-4 z-[10023] w-[min(calc(100vw-2rem),340px)] -translate-x-1/2 rounded-2xl border border-blue-200 bg-white p-4 shadow-2xl"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+            Tutoriel terminé
+          </div>
+          <p className="text-sm font-semibold text-slate-900">
+            Bravo, tu as créé ton premier trajet !
+          </p>
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={() => setShowOnboardingCongrats(false)}
+              className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+              Super
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="min-h-screen relative bg-[#F8FAFC] pb-28">
         {/* ── Sélecteur de trajets ────────────────────────────────────── */}
         <div
@@ -1990,20 +2418,11 @@ export default function MesTrajets() {
                     arrivalTime,
                   })
                 }
-                onSwapAndSearch={() => {
+                onSwap={() => {
                   const newDep = arr;
                   const newArr = dep;
                   setDep(newDep);
                   setArr(newArr);
-                  search(0, {
-                    dep: newDep,
-                    arr: newArr,
-                    manual: true,
-                    searchDate: searchBaseDate,
-                    searchTime,
-                    departureTime,
-                    arrivalTime,
-                  });
                 }}
                 onReset={reset}
                 onCancel={cancel}
@@ -2024,6 +2443,7 @@ export default function MesTrajets() {
 
       {/* ── StopPickerMap ─────────────────────────────────────────────── */}
       <button
+        data-onboarding="open-config"
         type="button"
         onClick={openInputs}
         title={

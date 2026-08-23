@@ -98,8 +98,8 @@ function extractPassages(
               direction,
               min: minutes,
               ts: ts * 1000,
-              tripId: st.tripId || st.trip?.id,
-              stopId: st.stopId,
+              tripId: st.tripId || st.trip?.id || st.trip?.gtfsId,
+              stopId: st.stopId || st.stop?.id || item.stopId,
               pattern: item.pattern,
             }
           : {
@@ -107,8 +107,8 @@ function extractPassages(
               direction,
               min: minutes,
               ts: ts * 1000,
-              tripId: st.tripId || st.trip?.id,
-              stopId: st.stopId,
+              tripId: st.tripId || st.trip?.id || st.trip?.gtfsId,
+              stopId: st.stopId || st.stop?.id || item.stopId,
               pattern: item.pattern,
             },
       );
@@ -131,30 +131,107 @@ const sameStopName = (first, second) => {
   return Boolean(a && b && (a === b || a.endsWith(b) || b.endsWith(a)));
 };
 
-const routeStopsCache = new Map();
-const tripProgressCache = new Map();
+const stopIdOf = (stop) => stop?.stopId || stop?.stop?.id || stop?.id;
 
-async function fetchRouteStops(routeId) {
+const routeClustersCache = new Map();
+const tripProgressCache = new Map();
+const stopClusterCache = new Map();
+
+async function fetchRouteClusters(routeId) {
   if (!routeId) return [];
-  if (routeStopsCache.has(routeId)) return routeStopsCache.get(routeId);
+  if (routeClustersCache.has(routeId)) return routeClustersCache.get(routeId);
 
   const request = fetch(
-    `https://data.mobilites-m.fr/api/routers/default/index/routes/${encodeURIComponent(routeId)}/stops`,
+    `https://data.mobilites-m.fr/api/routers/default/index/routes/${encodeURIComponent(routeId)}/clusters`,
   )
     .then((res) =>
       res.ok ? res.json() : Promise.reject(new Error("Route indisponible")),
     )
-    .then((stops) =>
-      (Array.isArray(stops) ? stops : [])
-        .map((stop) => ({ id: stop.id, name: stop.name }))
-        .filter((stop) => stop.id),
+    .then((clusters) =>
+      (Array.isArray(clusters) ? clusters : [])
+        .map((cluster) => ({
+          // `id` sert à situer le poteau converti depuis `clusterGtfsId`
+          // (ex. "SEM:PRI"). `code` est requis par l'endpoint des
+          // stoptimes (ex. "SEM:GENPRI") : ils ne sont pas interchangeables.
+          id: cluster.id || cluster.code,
+          code: cluster.code || cluster.id,
+          name: cluster.name,
+        }))
+        .filter((cluster) => cluster.id && cluster.code),
     )
     .catch((error) => {
-      routeStopsCache.delete(routeId);
+      routeClustersCache.delete(routeId);
       throw error;
     });
-  routeStopsCache.set(routeId, request);
+  routeClustersCache.set(routeId, request);
   return request;
+}
+
+// `pattern.lastStop` (et, côté temps réel, chaque `stopId` de stoptime) est un
+// identifiant de poteau ("SEM:1177"), pas un identifiant de cluster ("SEM:xxx"
+// tel que renvoyé par /routes/:id/clusters). Pour retrouver ce poteau dans la
+// liste des clusters de la ligne, on le résout via /api/bbox/json?types=stops
+// (une FeatureCollection GeoJSON dont chaque feature expose, dans
+// `properties`, `id` et `clusterGtfsId`), puis on recompose l'id de cluster
+// en préfixant `clusterGtfsId` par le même préfixe d'agence que le poteau
+// ("SEM:", "MCO:", "FUN:", "BUL:"…), plutôt que de le figer sur "SEM:".
+async function fetchStopClusterId(stopId) {
+  if (!stopId) return null;
+  if (stopClusterCache.has(stopId)) return stopClusterCache.get(stopId);
+
+  const request = fetch(`https://data.mobilites-m.fr/api/bbox/json?types=stops`)
+    .then((res) =>
+      res.ok ? res.json() : Promise.reject(new Error("Arrêts indisponibles")),
+    )
+    .then((payload) => {
+      const features = Array.isArray(payload?.features) ? payload.features : [];
+      const match = features.find((feature) => {
+        const props = feature?.properties || {};
+        return props.id === stopId || props.gtfsId === stopId;
+      });
+      const clusterGtfsId = match?.properties?.clusterGtfsId;
+      if (!clusterGtfsId) return null;
+
+      const agencyPrefix = String(stopId).split(":")[0];
+      return agencyPrefix ? `${agencyPrefix}:${clusterGtfsId}` : null;
+    })
+    .catch((error) => {
+      stopClusterCache.delete(stopId);
+      throw error;
+    });
+  stopClusterCache.set(stopId, request);
+  return request;
+}
+
+// Retrouve l'index d'un poteau (stopId) dans la liste ordonnée des clusters
+// d'une ligne : correspondance directe d'id (au cas où l'id fourni serait
+// déjà un cluster), sinon conversion via fetchStopClusterId, sinon repli sur
+// une correspondance de nom.
+async function resolveClusterIndex(routeClusters, stopId, stopName) {
+  if (!stopId && !stopName) return -1;
+
+  if (stopId) {
+    const directIndex = routeClusters.findIndex((cluster) =>
+      [cluster.id, cluster.code].includes(stopId),
+    );
+    if (directIndex >= 0) return directIndex;
+
+    try {
+      const clusterId = await fetchStopClusterId(stopId);
+      if (clusterId) {
+        const index = routeClusters.findIndex((cluster) =>
+          [cluster.id, cluster.code].includes(clusterId),
+        );
+        if (index >= 0) return index;
+      }
+    } catch {
+      // on retombe sur la correspondance par nom ci-dessous
+    }
+  }
+
+  return routeClusters.findIndex((cluster) =>
+    sameStopName(cluster.name, stopName),
+  );
 }
 
 // Les arrêts d'un pattern sont ordonnés dans le sens de circulation. On garde
@@ -179,7 +256,7 @@ function downstreamPatternStops(pattern, currentStopId, currentStopName) {
     0,
     patternStops.findIndex(
       (item) =>
-        item.id === currentStopId || sameStopName(item.name, currentKey),
+        stopIdOf(item) === currentStopId || sameStopName(item.name, currentKey),
     ),
   );
   const endOffset = patternStops
@@ -190,7 +267,7 @@ function downstreamPatternStops(pattern, currentStopId, currentStopName) {
 
   return patternStops
     .slice(startIndex, endIndex + 1)
-    .map((item) => ({ id: item.id || item.stopId, name: item.name }))
+    .map((item) => ({ id: stopIdOf(item), name: item.name }))
     .filter((item) => item.id);
 }
 
@@ -200,17 +277,10 @@ async function fetchDownstreamStops(
   currentStopName,
   fallbackRouteId,
 ) {
-  const stopsFromPattern = downstreamPatternStops(
-    pattern,
-    currentStopId,
-    currentStopName,
-  );
-  if (stopsFromPattern.length > 0) {
-    return stopsFromPattern.filter((stop) => stop.id !== currentStopId);
-  }
-
-  // L'endpoint RT fournit le terminus mais pas les arrêts du parcours. La
-  // liste ordonnée de la ligne est donc chargée une fois et mise en cache.
+  // L'endpoint RT fournit le terminus mais pas les clusters du parcours. La
+  // liste ordonnée de la ligne est donc chargée une fois et mise en cache,
+  // puis sert de source principale pour obtenir la séquence de clusters entre
+  // l'arrêt courant et le terminus du trip.
   const routeId =
     (typeof pattern?.route === "string" ? pattern.route : pattern?.route?.id) ||
     pattern?.routeId ||
@@ -218,7 +288,7 @@ async function fetchDownstreamStops(
     // exposer `route.id` : les deux premiers segments sont l'id de ligne.
     pattern?.id?.split(":").slice(0, 2).join(":") ||
     fallbackRouteId;
-  const routeStops = await fetchRouteStops(routeId);
+  const routeClusters = await fetchRouteClusters(routeId);
   const lastStopName =
     (typeof pattern?.lastStop === "string"
       ? pattern.lastStop
@@ -230,38 +300,77 @@ async function fetchDownstreamStops(
     typeof pattern?.lastStop === "string"
       ? pattern.lastStop
       : pattern?.lastStop?.id;
-  const currentIndex = routeStops.findIndex(
-    (stop) => stop.id === currentStopId,
-  );
-  // lastStop est un identifiant de poteau : c'est indispensable sur les
-  // terminus dont les deux quais portent le même nom.
-  const lastIndex = lastStopId
-    ? routeStops.findIndex((stop) => stop.id === lastStopId)
-    : routeStops.findIndex((stop) => sameStopName(stop.name, lastStopName));
-  if (currentIndex === -1 || lastIndex === -1) return [];
 
-  const segment = routeStops.slice(
-    Math.min(currentIndex, lastIndex),
-    Math.max(currentIndex, lastIndex) + 1,
+  if (routeClusters.length > 0) {
+    const [currentIndex, resolvedLastIndex] = await Promise.all([
+      resolveClusterIndex(routeClusters, currentStopId, currentStopName),
+      resolveClusterIndex(routeClusters, lastStopId, lastStopName),
+    ]);
+    if (currentIndex !== -1 && resolvedLastIndex !== -1) {
+      const segment = routeClusters.slice(
+        Math.min(currentIndex, resolvedLastIndex),
+        Math.max(currentIndex, resolvedLastIndex) + 1,
+      );
+      const directionStops =
+        currentIndex <= resolvedLastIndex ? segment : segment.reverse();
+      return directionStops.slice(1);
+    }
+  }
+
+  // Fallback API : certains patterns OTP exposent une liste d'arrêts plus
+  // complète que la route, même si les ids peuvent alors être des poteaux.
+  const stopsFromPattern = downstreamPatternStops(
+    pattern,
+    currentStopId,
+    currentStopName,
   );
-  const directionStops =
-    currentIndex <= lastIndex ? segment : segment.reverse();
-  return directionStops.slice(1);
+  return stopsFromPattern.filter((stop) => stop.id !== currentStopId);
 }
 
 function stopTimeForTrip(payload, tripId) {
   if (!Array.isArray(payload) || !tripId) return null;
+  const wantedTripId = String(tripId);
   for (const item of payload) {
     for (const time of item.times || []) {
-      if ((time.tripId || time.trip?.id) !== tripId) continue;
+      const timeTripId = time.tripId || time.trip?.id || time.trip?.gtfsId;
+      if (String(timeTripId || "") !== wantedTripId) continue;
       const seconds =
         (time.serviceDay ?? 0) +
-        (time.realtimeArrival ?? time.scheduledArrival ?? 0);
+        (time.realtimeArrival ??
+          time.scheduledArrival ??
+          time.realtimeDeparture ??
+          time.scheduledDeparture ??
+          0);
       if (!Number.isFinite(seconds)) continue;
       return { ts: seconds * 1000 };
     }
   }
   return null;
+}
+
+function mergeDuplicateStops(stops) {
+  const merged = [];
+  const indexesById = new Map();
+  const indexesByName = new Map();
+
+  stops.forEach((stop) => {
+    const id = stopIdOf(stop);
+    const key = stopNameKey(stop.name);
+    const existingIndex =
+      (id && indexesById.get(id)) ?? (key && indexesByName.get(key));
+    if (existingIndex === undefined) {
+      if (id) indexesById.set(id, merged.length);
+      if (key) indexesByName.set(key, merged.length);
+      merged.push(stop);
+      return;
+    }
+
+    if (!merged[existingIndex].passage && stop.passage) {
+      merged[existingIndex] = stop;
+    }
+  });
+
+  return merged;
 }
 
 async function fetchTransitDuration(fromStop, toStop, line, departureTs) {
@@ -281,6 +390,11 @@ async function fetchTransitDuration(fromStop, toStop, line, departureTs) {
     showIntermediateStops: "true",
     numItineraries: "5",
   });
+  // Le repli du terminus doit impérativement suivre la ligne du passage
+  // sélectionné, pas une correspondance proposée par OTP entre ces deux
+  // arrêts très proches.
+  params.set("preferredRoutes", `SEM:${lineKey(line)}`);
+  params.set("otherThanPreferredRoutesPenalty", "999999");
   const response = await fetch(
     `https://data.mobilites-m.fr/api/routers/default/plan?${params}`,
   );
@@ -314,28 +428,44 @@ function fetchTripProgress(passage, currentStopName) {
     .then((stops) =>
       Promise.all(
         stops.map(async (stop) => {
-          const res = await fetch(
-            `https://data.mobilites-m.fr/api/routers/default/index/stops/${encodeURIComponent(stop.id)}/stoptimes`,
-          );
-          if (!res.ok) {
-            throw new Error("Échec du chargement des passages du trajet");
+          try {
+            // Les clusters de la ligne fournissent déjà le `code` requis par
+            // /clusters/:code/stoptimes (SEM:GEN...). Ne pas le remplacer
+            // par SEM:<clusterGtfsId>, qui sert seulement à retrouver le
+            // cluster logique dans la liste ordonnée.
+            const rawStopId = String(stop.id || "");
+            const stopCode = String(stop.code || rawStopId);
+            if (!stopCode) return { ...stop, passage: null };
+
+            const res = await fetch(
+              `https://data.mobilites-m.fr/api/routers/default/index/clusters/${encodeURIComponent(stopCode)}/stoptimes`,
+            );
+            if (!res.ok) return { ...stop, passage: null };
+            return {
+              ...stop,
+              passage: stopTimeForTrip(await res.json(), passage.tripId),
+            };
+          } catch {
+            return { ...stop, passage: null };
           }
-          return {
-            ...stop,
-            passage: stopTimeForTrip(await res.json(), passage.tripId),
-          };
         }),
-      ).then(async (results) => {
+      ).then(async (rawResults) => {
+        const results = mergeDuplicateStops(rawResults);
         const lastIndex = results.length - 1;
         const previous = results[lastIndex - 1];
         const last = results[lastIndex];
         if (!last || last.passage || !previous?.passage) return results;
 
+        // Le terminus n'est parfois pas encore exposé par les stoptimes du
+        // trip. On l'estime alors avec OTP entre les deux derniers clusters,
+        // juste avant l'arrivée connue à l'avant-dernier arrêt : à l'heure
+        // exacte, l'itinéraire peut déjà considérer le véhicule parti.
+        const fallbackDepartureTs = previous.passage.ts - 60_000;
         const duration = await fetchTransitDuration(
           previous,
           last,
           passage.route,
-          previous.passage.ts,
+          fallbackDepartureTs,
         );
         if (!duration) return results;
 
@@ -343,7 +473,7 @@ function fetchTripProgress(passage, currentStopName) {
           index === lastIndex
             ? {
                 ...stop,
-                passage: { ts: previous.passage.ts + duration },
+                passage: { ts: fallbackDepartureTs + duration },
               }
             : stop,
         );
@@ -407,7 +537,7 @@ function TripProgress({ passage, currentStopName, lineColors }) {
   const line = lineKey(passage.route);
   // Même priorité que JourneyTimeline : couleur locale définie pour les C,
   // sinon couleur officielle chargée depuis /index/routes.
-  const lineColor = LINE_COLORS[line] || lineColors?.[line] || "#6B7280";
+  const lineColor = LINE_COLORS[line] || lineColors?.[line] || "#94A3B8";
 
   return (
     <div className="px-3 pb-3 pt-1">
@@ -717,11 +847,13 @@ function PassageCard({
         }`}
       >
         <div className="min-h-0 overflow-hidden">
-          <TripProgress
-            passage={{ route, direction, min, ts, tripId, stopId, pattern }}
-            currentStopName={currentStopName}
-            lineColors={lineColors}
-          />
+          {expanded && (
+            <TripProgress
+              passage={{ route, direction, min, ts, tripId, stopId, pattern }}
+              currentStopName={currentStopName}
+              lineColors={lineColors}
+            />
+          )}
         </div>
       </div>
     </div>

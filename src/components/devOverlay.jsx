@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { usePerfSettings } from "../hooks/usePerfSettings";
+import {
+  getTripsLoadMetric,
+  subscribeToTripsLoadMetric,
+} from "../utils/tripsLoadMetric.js";
 
 /**
  * Overlay de performance (mode développeur).
@@ -44,6 +48,8 @@ const EMPTY_STATS = {
   requests: 0,
   transferredKb: 0,
   longTasks: 0,
+  tripsLoadMs: null,
+  tripsLoadComplete: false,
 };
 
 export function DevOverlay() {
@@ -53,6 +59,7 @@ export function DevOverlay() {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const overlayRef = useRef(null);
   const longTasksRef = useRef(0);
+  const tripsLoadMetricRef = useRef(getTripsLoadMetric());
   const draggingRef = useRef(false);
   const dragOriginRef = useRef({
     pointerX: 0,
@@ -149,6 +156,14 @@ export function DevOverlay() {
 
   // Les tâches longues (> 50 ms sur le thread principal) sont la cause la plus
   // fréquente des à-coups : PerformanceObserver les signale directement.
+  useEffect(
+    () =>
+      subscribeToTripsLoadMetric((metric) => {
+        tripsLoadMetricRef.current = metric;
+      }),
+    [],
+  );
+
   useEffect(() => {
     if (!enabled || typeof PerformanceObserver === "undefined") return;
     // Le compteur repart de zéro à chaque activation de l'overlay.
@@ -191,6 +206,13 @@ export function DevOverlay() {
           0,
         );
         const memory = performance.memory;
+        const tripsMetric = tripsLoadMetricRef.current;
+        const tripsLoadMs =
+          tripsMetric.startedAt === null
+            ? null
+            : Math.round(
+                (tripsMetric.completedAt ?? now) - tripsMetric.startedAt,
+              );
 
         /** @type {Stats} */
         const nextStats = {
@@ -207,6 +229,8 @@ export function DevOverlay() {
           requests: resources.length,
           transferredKb: Math.round(transferred / 1024),
           longTasks: longTasksRef.current,
+          tripsLoadMs,
+          tripsLoadComplete: tripsMetric.completedAt !== null,
         };
 
         setStats(nextStats);
@@ -284,6 +308,17 @@ export function DevOverlay() {
         value={String(stats.longTasks)}
         warn={stats.longTasks > 0}
       />
+      {stats.tripsLoadMs !== null && (
+        <Line
+          label={
+            stats.tripsLoadComplete
+              ? "trajets affichés"
+              : "chargement trajets"
+          }
+          value={`${stats.tripsLoadMs} ms`}
+          warn={!stats.tripsLoadComplete}
+        />
+      )}
       {stats.memoryMb !== null && (
         <Line
           label="mémoire JS"

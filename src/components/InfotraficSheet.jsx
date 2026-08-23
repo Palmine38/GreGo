@@ -3,6 +3,7 @@ import { Sheet } from "react-modal-sheet";
 import LineIcon from "./lines-icons.jsx";
 import { DisruptionItem } from "./DisruptionItem.jsx";
 import { useDisruptions } from "../hooks/useDisruptions.js";
+import { getRoutes } from "../utils/routesCache.js";
 
 const TRAM_ORDER = ["A", "B", "C", "D", "E"];
 
@@ -64,8 +65,7 @@ export function InfotraficSheet({ isOpen, onClose, initialSnap = 1 }) {
   const detailRef = useRef(null);
 
   useEffect(() => {
-    fetch("https://data.mobilites-m.fr/api/routers/default/index/routes")
-      .then((res) => (res.ok ? res.json() : []))
+    getRoutes()
       .then(setRoutes)
       .catch(() => setRoutes([]));
   }, []);

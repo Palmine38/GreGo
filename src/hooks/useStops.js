@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { removeAccents } from "../utils/journey.js";
 import { normalizeRouteRef } from "../utils/routeLineResolver.js";
+import { getRoutes } from "../utils/routesCache.js";
 
 const roundCoord = (n) => Math.round(n * 1e5) / 1e5;
 
@@ -31,10 +32,7 @@ async function fetchStops() {
     const routeLongNames = {};
 
     try {
-      const routesResp = await fetch(
-        "https://data.mobilites-m.fr/api/routers/default/index/routes",
-      );
-      const routes = await routesResp.json();
+      const routes = await getRoutes();
       // On garde le longName de chaque ligne au passage : il sert ensuite à
       // retrouver les vrais terminus d'une ligne (voir selectStopLine dans
       // fast-research.jsx), sans requête supplémentaire puisque /index/routes
@@ -205,7 +203,8 @@ export function useStops() {
 
   const findStop = (query, preferredLine) => {
     if (!query?.trim()) return [];
-    const key = removeAccents(query.trim().toLowerCase());
+    const rawQuery = query.trim();
+    const key = removeAccents(rawQuery.toLowerCase());
 
     const prioritizeLine = (positions) => {
       if (!preferredLine?.trim()) return positions;
@@ -222,6 +221,20 @@ export function useStops() {
         return Number(matches(b)) - Number(matches(a));
       });
     };
+
+    // Un trajet restauré peut contenir un identifiant OTP interne (par ex.
+    // "SEM:GENPVC") alors que le champ affiche déjà son nom via
+    // resolveDisplayName. Le reconnaître ici évite de traiter cet identifiant
+    // comme un texte d'arrêt et conserve l'affichage « Pont de Vence ».
+    const matchingIds = Object.values(stopsMap)
+      .flat()
+      .filter(
+        (position) =>
+          position.id === rawQuery ||
+          position.stopId === rawQuery ||
+          position.id.startsWith(`${rawQuery}::`),
+      );
+    if (matchingIds.length) return prioritizeLine(matchingIds);
 
     for (const [k, v] of Object.entries(stopsMap)) {
       if (removeAccents(k) === key) return prioritizeLine(v);

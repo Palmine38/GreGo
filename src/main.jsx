@@ -4,7 +4,7 @@ import { HelmetProvider } from "react-helmet-async";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./index.css";
 import App from "./App.jsx";
-import { preloadLineRouteCache } from "./components/lines-icons.jsx";
+import { preloadRoutes } from "./utils/routesCache.js";
 
 const container = document.getElementById("root");
 
@@ -30,10 +30,10 @@ const renderApp = () => {
 };
 
 (async () => {
+  renderApp();
   try {
-    await preloadLineRouteCache();
+    await preloadRoutes();
   } catch (error) {
     console.error("Préchargement des routes échoué:", error);
   }
-  renderApp();
 })();

@@ -20,6 +20,9 @@ import { SpeedInsights } from "@vercel/speed-insights/react";
 import { PageSeo } from "./components/PageSeo.jsx";
 import { useInstallPrompt } from "./hooks/useInstallPrompt.js";
 import { InstallGreGoSheet } from "./components/InstallGreGoSheet.jsx";
+import {
+  notifyInstallPromptResolved,
+} from "./utils/installPromptGate.js";
 import "./App.css";
 
 function DeviceGuard({ children }) {
@@ -50,12 +53,22 @@ function SeoRoute({ page, children }) {
 }
 function InstallPromptGate() {
   const { ready, shouldShow, platform, dismiss } = useInstallPrompt();
+
+  useEffect(() => {
+    if (ready && !shouldShow) notifyInstallPromptResolved();
+  }, [ready, shouldShow]);
+
+  const close = () => {
+    dismiss();
+    notifyInstallPromptResolved();
+  };
+
   if (!ready) return null;
 
   return (
     <InstallGreGoSheet
       isOpen={shouldShow}
-      onClose={dismiss}
+      onClose={close}
       platform={platform}
     />
   );

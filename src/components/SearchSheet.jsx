@@ -51,7 +51,7 @@ export function SearchForm({
   arrAddressSuggestions = [],
   onSelectSuggestion,
   onSearch,
-  onSwapAndSearch,
+  onSwap,
   onReset,
   onCancel,
   loading,
@@ -139,6 +139,7 @@ export function SearchForm({
           <div className="flex items-center">
             <div className="relative flex-1">
               <input
+                data-onboarding="dep-input"
                 value={formatInputValue(dep, depDisplay)}
                 onChange={(e) => setDep(e.target.value)}
                 onClick={() => setActiveInput("dep")}
@@ -252,7 +253,10 @@ export function SearchForm({
                   <li
                     key={i}
                     className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
-                    onClick={() => onSelectSuggestion(s, "dep")}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      onSelectSuggestion(s, "dep");
+                    }}
                   >
                     {s}
                   </li>
@@ -266,7 +270,10 @@ export function SearchForm({
                   <li
                     key={address.value}
                     className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
-                    onClick={() => onSelectSuggestion(address.value, "dep")}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      onSelectSuggestion(address.value, "dep");
+                    }}
                   >
                     <p className="text-sm font-semibold text-slate-800">
                       {address.label}
@@ -283,9 +290,9 @@ export function SearchForm({
           <div className="relative h-0 overflow-visible col-span-full sm:col-span-1 sm:col-start-1">
             <button
               type="button"
-              onClick={onSwapAndSearch}
-              aria-label="Inverser départ et arrivée et rechercher"
-              title="Inverser départ et arrivée et rechercher"
+              onClick={onSwap}
+              aria-label="Inverser départ et arrivée"
+              title="Inverser départ et arrivée"
               className="absolute left-1/2 top-2.5 -translate-x-1/2 -translate-y-1/2 z-30 rounded-full p-1 text-gray-500"
             >
               <LiaExchangeAltSolid className="size-5 rotate-90" />
@@ -298,6 +305,7 @@ export function SearchForm({
           <span className="text-sm text-gray-600">Arrivée</span>
           <div className="flex items-center">
             <input
+              data-onboarding="arr-input"
               value={formatInputValue(arr, arrDisplay)}
               onChange={(e) => setArr(e.target.value)}
               onClick={() => setActiveInput("arr")}
@@ -352,7 +360,10 @@ export function SearchForm({
                   <li
                     key={i}
                     className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
-                    onClick={() => onSelectSuggestion(s, "arr")}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      onSelectSuggestion(s, "arr");
+                    }}
                   >
                     {s}
                   </li>
@@ -366,7 +377,10 @@ export function SearchForm({
                   <li
                     key={address.value}
                     className="px-3 py-2 hover:bg-gray-100 cursor-pointer"
-                    onClick={() => onSelectSuggestion(address.value, "arr")}
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      onSelectSuggestion(address.value, "arr");
+                    }}
                   >
                     <p className="text-sm font-semibold text-slate-800">
                       {address.label}
@@ -419,6 +433,7 @@ export function SearchForm({
       </div>
       <div className="space-y-1.5 mt-3 flex flex-col items-stretch">
         <button
+          data-onboarding="search-button"
           onClick={onSearch}
           disabled={loading || !stopsLoaded}
           className="w-full px-4 py-3 bg-blue-600 text-white rounded-xl font-semibold disabled:opacity-60 mb-1"

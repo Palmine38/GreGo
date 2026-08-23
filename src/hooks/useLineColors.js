@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getRoutes } from "../utils/routesCache.js";
 
 /**
  * Charge les couleurs officielles des lignes depuis l'API Mobilités-M.
@@ -10,8 +11,7 @@ export function useLineColors() {
     useEffect(() => {
         const load = async () => {
             try {
-                const response = await fetch('https://data.mobilites-m.fr/api/routers/default/index/routes');
-                const routes = await response.json();
+                const routes = await getRoutes();
                 const colors = {};
                 routes.forEach((route) => {
                     const shortName = route.shortName?.toUpperCase();

@@ -3,6 +3,7 @@ import Navbar from "./navbar.jsx";
 import LineIcon from "./components/lines-icons.jsx";
 import { DisruptionItem } from "./components/DisruptionItem.jsx";
 import { useDisruptions } from "./hooks/useDisruptions.js";
+import { getRoutes } from "./utils/routesCache.js";
 
 const TRAM_ORDER = ["A", "B", "C", "D", "E"];
 
@@ -64,8 +65,7 @@ export default function InfoTrafic() {
   const detailRef = useRef(null);
 
   useEffect(() => {
-    fetch("https://data.mobilites-m.fr/api/routers/default/index/routes")
-      .then((res) => (res.ok ? res.json() : []))
+    getRoutes()
       .then(setRoutes)
       .catch(() => setRoutes([]));
   }, []);

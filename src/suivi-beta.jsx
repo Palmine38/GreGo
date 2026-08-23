@@ -3,6 +3,7 @@ import Navbar from "./navbar.jsx";
 import LineIcon from "./components/lines-icons.jsx";
 import { DisruptionItem } from "./components/DisruptionItem.jsx";
 import { useDisruptions } from "./hooks/useDisruptions.js";
+import { getRoutes } from "./utils/routesCache.js";
 
 const API = "https://data.mobilites-m.fr/api/routers/default";
 const TRAMS = new Set(["A", "B", "C", "D", "E"]);
@@ -19,7 +20,7 @@ export default function SuiviBeta() {
   const [status, setStatus] = useState(""); const [testMode, setTestMode] = useState(false);
   const watchId = useRef(null); const lastCoords = useRef(null);
 
-  useEffect(() => { fetch(`${API}/index/routes`).then((r) => r.json()).then((data) => setRoutes(data.filter((r) => TRAMS.has((r.shortName || "").toUpperCase())))).catch(() => setStatus("Impossible de charger les lignes.")); }, []);
+  useEffect(() => { getRoutes().then((data) => setRoutes(data.filter((r) => TRAMS.has((r.shortName || "").toUpperCase())))).catch(() => setStatus("Impossible de charger les lignes.")); }, []);
   useEffect(() => {
     if (!line) return;
     fetch(`${API}/index/routes/SEM:${line}/clusters`).then((r) => r.json()).then((data) => {

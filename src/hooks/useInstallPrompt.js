@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 
-const DISMISS_KEY = "gregoInstallPromptDismissed";
-
 export function detectPlatform() {
   if (typeof navigator === "undefined") return null;
   const ua = navigator.userAgent || "";
@@ -41,7 +39,7 @@ export function isRunningStandalone() {
  * Règles :
  * - mobile uniquement (pas de desktop)
  * - PWA pas déjà installée (standalone)
- * - pas déjà fermé pendant cette session (sessionStorage)
+ * - pas déjà fermé pendant le chargement courant de la page
  * - iOS et Android supportés (tutoriel manuel dans les deux cas)
  */
 export function useInstallPrompt() {
@@ -55,19 +53,15 @@ export function useInstallPrompt() {
     const platform = detectPlatform();
     const mobile = isMobileDevice();
     const standalone = isRunningStandalone();
-    const dismissed = sessionStorage.getItem(DISMISS_KEY) === "true";
-
     const shouldShow =
       mobile &&
       !standalone &&
-      !dismissed &&
       (platform === "ios" || platform === "android");
 
     setState({ ready: true, shouldShow, platform });
   }, []);
 
   const dismiss = () => {
-    sessionStorage.setItem(DISMISS_KEY, "true");
     setState((s) => ({ ...s, shouldShow: false }));
   };
 

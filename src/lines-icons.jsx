@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { getRoutes } from "./utils/routesCache.js";
 
 export const LINE_COLORS = {
   C11: "#EF7C00",
@@ -19,23 +20,7 @@ export const LINE_COLORS = {
 };
 // Cache global pour les données des lignes
 const lineDataCache = new Map();
-let routesPromise = null;
-
-// Charger une seule fois toutes les routes
-const fetchAllRoutes = async () => {
-  if (routesPromise) return routesPromise;
-
-  routesPromise = fetch(
-    "https://data.mobilites-m.fr/api/routers/default/index/routes",
-  )
-    .then((res) => res.json())
-    .catch((err) => {
-      console.error("Erreur chargement routes:", err);
-      return [];
-    });
-
-  return routesPromise;
-};
+const fetchAllRoutes = getRoutes;
 
 export default function LineIcon({ lineKey = "", size = "w-6 h-6" }) {
   const [lineData, setLineData] = useState(null);
