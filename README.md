@@ -1,4 +1,4 @@
-## [![Bannière Grego](https://image.noelshack.com/fichiers/2026/30/5/1784922257-dark-no-bg-banner.png)](https://gre-go.vercel.app/)
+[![Bannière Grego](https://image.noelshack.com/fichiers/2026/30/5/1784922257-dark-no-bg-banner.png)](https://gre-go.vercel.app/)
 [![React](https://img.shields.io/badge/React-19.2.4-blue.svg)](https://reactjs.org/)
 [![Vite](https://img.shields.io/badge/Vite-8.0.0-646CFF.svg)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.3.6-38B2AC.svg)](https://tailwindcss.com/)
@@ -23,6 +23,9 @@
 
 ### Recherche Rapide
 - **Recherche Rapide** : Fonctionnalité de recherche rapide pour des requêtes ponctuelles sans sauvegarde
+- Carte interactive très complète : Citiz, Voi, le Pays Voirronais et le Grésivaudan sont inclus
+- Détail des arrêts : prochains passages en temps réel, carte/plan en PDF, suivi d'un tram/bus. Contient aussi un mode "passages théoriques".
+- Itinéraires possibles
 
 
 ### Données
