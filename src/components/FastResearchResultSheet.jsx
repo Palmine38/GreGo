@@ -1,7 +1,7 @@
 ﻿import React, { useEffect, useState } from "react";
 import { Sheet } from "react-modal-sheet";
 import { JourneyCard } from "./JourneyCard.jsx";
-import { JourneyDetailsContent } from "./JourneyDetailsSheet.jsx";
+import { JourneyDetailsContent } from "./lazyMaps.jsx";
 import { useTheme } from "../hooks/useTheme.js";
 
 const ArrowRightIcon = ({ className = "size-4" }) => (

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useLightMode } from "./useLightMode.js";
 
 const VOI_FREE_BIKE_URL =
   "https://data.mobilites-m.fr/api/gbfs/voi_grenoble/free_bike_status";
@@ -26,6 +27,12 @@ const inGrenobleBbox = (lat, lon) =>
   lon <= GRENOBLE_BBOX.east;
 
 export function useGbfs() {
+  // Mode léger : les véhicules en libre-service sont un complément à la carte,
+  // pas le cœur de l'application. Les couper évite 4 requêtes au démarrage,
+  // deux rafraîchissements périodiques (toutes les 1 et 5 minutes) et le
+  // téléchargement des vignettes de véhicules. Contrepartie assumée :
+  // trottinettes Voi et voitures Citiz n'apparaissent plus sur la carte.
+  const lightMode = useLightMode();
   const [voiVehicles, setVoiVehicles] = useState([]);
   const [citizStations, setCitizStations] = useState([]);
   const [citizVehicleTypes, setCitizVehicleTypes] = useState({});
@@ -33,6 +40,7 @@ export function useGbfs() {
   const [citizLoaded, setCitizLoaded] = useState(false);
 
   useEffect(() => {
+    if (lightMode) return undefined;
     let cancelled = false;
 
     const fetchVoi = async () => {
@@ -71,9 +79,10 @@ export function useGbfs() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [lightMode]);
 
   useEffect(() => {
+    if (lightMode) return undefined;
     let cancelled = false;
 
     const fetchCitiz = async () => {
@@ -140,12 +149,15 @@ export function useGbfs() {
       cancelled = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [lightMode]);
 
   return {
     voiVehicles,
     citizStations,
     citizVehicleTypes,
-    gbfsLoaded: voiLoaded && citizLoaded,
+    // En mode léger, rien ne sera chargé : on annonce l'état « prêt » pour que
+    // les vues qui attendent ces données affichent la carte sans les attendre,
+    // au lieu de patienter indéfiniment.
+    gbfsLoaded: lightMode || (voiLoaded && citizLoaded),
   };
 }

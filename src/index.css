@@ -1,4 +1,6 @@
-@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap");
+/* Montserrat est chargé depuis index.html (preload non bloquant). Ne pas le
+   réimporter ici : un `@import` dans la feuille bundlée sérialise les requêtes
+   (bundle CSS → CSS de la police → woff2) et retarde d'autant le rendu. */
 
 @tailwind base;
 @tailwind components;

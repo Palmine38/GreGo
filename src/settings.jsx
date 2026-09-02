@@ -9,6 +9,7 @@ import {
 } from "./hooks/useTheme.js";
 import { usePerfSettings } from "./hooks/usePerfSettings.js";
 import { NotificationToast } from "./components/NotificationToast.jsx";
+import { LIGHT_MODE_CHANGE_EVENT } from "./utils/lightMode.js";
 const DEBUG = true;
 
 const DEFAULTS = {
@@ -19,6 +20,8 @@ const DEFAULTS = {
   showJourneyDisruptions: true,
   showIntermediateStops: true,
   theme: THEMES.AUTO,
+  // Désactivé par défaut : le mode complet reste l'expérience de référence.
+  lightMode: false,
 };
 
 const SLIDER_MAX = 20;
@@ -52,6 +55,7 @@ export default function Settings() {
           showIntermediateStops:
             parsed.showIntermediateStops ?? DEFAULTS.showIntermediateStops,
           theme: normalizeTheme(parsed.theme),
+          lightMode: parsed.lightMode ?? DEFAULTS.lightMode,
         };
       }
     } catch (e) {
@@ -72,6 +76,7 @@ export default function Settings() {
     initial.showIntermediateStops,
   );
   const [theme, setTheme] = useState(initial.theme);
+  const [lightMode, setLightMode] = useState(initial.lightMode);
   const [systemPrefersDark, setSystemPrefersDark] = useState(
     () =>
       typeof window !== "undefined" &&
@@ -162,10 +167,16 @@ export default function Settings() {
         showJourneyDisruptions,
         showIntermediateStops,
         theme,
+        lightMode,
       }),
     );
     applyTheme(theme);
     window.dispatchEvent(new Event("tag-express-theme-change"));
+    // Prévient le reste de l'application que le mode léger a peut-être changé.
+    // Indispensable : l'événement natif `storage` ne se déclenche que dans les
+    // *autres* onglets, jamais dans celui qui écrit. Sans cette ligne, le
+    // réglage ne prendrait effet qu'au prochain rechargement de la page.
+    window.dispatchEvent(new Event(LIGHT_MODE_CHANGE_EVENT));
     if (DEBUG)
       console.log("⚙️ Settings sauvegardés:", {
         wheelchair,
@@ -175,6 +186,7 @@ export default function Settings() {
         showJourneyDisruptions,
         showIntermediateStops,
         theme,
+        lightMode,
       });
   }, [
     wheelchair,
@@ -184,6 +196,7 @@ export default function Settings() {
     showJourneyDisruptions,
     showIntermediateStops,
     theme,
+    lightMode,
   ]);
 
   useEffect(() => {
@@ -467,6 +480,22 @@ export default function Settings() {
               </label>
               <p className="text-xs text-gray-500 mt-1">
                 Affiche les arrêts desservis entre le départ et l'arrivée.
+              </p>
+            </div>
+
+            <div className="border-t border-gray-200 pt-4 pb-4">
+              <label className="flex items-center justify-between cursor-pointer gap-4">
+                <span className="text-sm font-semibold">Mode léger</span>
+                <input
+                  type="checkbox"
+                  checked={lightMode}
+                  onChange={(e) => setLightMode(e.target.checked)}
+                  className="w-4 h-4 cursor-pointer flex-shrink-0"
+                />
+              </label>
+              <p className="text-xs text-gray-500 mt-1">
+                Accélère le démarrage et réduit les données consommées, utile
+                pour regarder uniquement les trajets.
               </p>
             </div>
 

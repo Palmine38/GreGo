@@ -1,5 +1,6 @@
 import { useRef, useState, useCallback, useEffect, useMemo } from "react";
 import MapLibreMap, { Marker } from "react-map-gl/maplibre";
+import "maplibre-gl/dist/maplibre-gl.css";
 import { createPortal } from "react-dom";
 import { MapSheet } from "./MapSheet.jsx";
 import { Source, Layer } from "react-map-gl/maplibre";
@@ -12,7 +13,8 @@ import lineNAVBPdsToVerdun from "./lineNAVB_pds_to_verdun.json";
 import { GbfsSheet } from "./gbfsSheet.jsx";
 import { useTheme } from "../hooks/useTheme.js";
 import { usePerfSettings } from "../hooks/usePerfSettings.js";
-import { getLegGeometry as getJourneyLegGeometry } from "./JourneyDetailsSheet.jsx";
+import { getLegGeometry as getJourneyLegGeometry } from "../utils/legGeometry.js";
+import { useJourneyLineShapes } from "../hooks/useJourneyLineShapes.js";
 import { MdElectricScooter } from "react-icons/md";
 import { FaCar } from "react-icons/fa";
 import { FaLocationPin } from "react-icons/fa6";
@@ -739,22 +741,44 @@ export default function StopPickerMap({
   const userMarkerSize = zoom <= 11.5 ? 7 : zoom < 14 ? 10 : 14;
   const SNAP_THRESHOLD_DEG = 0.00018;
 
+  // Le tracé d'une ligne arrive soit en une seule polyligne (`[[lon, lat], …]`),
+  // soit en plusieurs branches (`[[[lon, lat], …], …]`) quand la géométrie
+  // publiée de la ligne en compte plusieurs. On normalise vers la seconde forme
+  // et on dessine une MultiLineString : mettre les branches bout à bout ferait
+  // tracer un segment fantôme de la fin de l'une au début de la suivante.
+  //
   // Une seule coordonnée invalide fait rejeter toute la LineString par MapLibre.
   // Les arrêts restent, eux, affichables individuellement : on filtre donc ici
   // aussi les données venant de la fiche d'arrêt.
-  const safeActiveLineTrace = useMemo(
-    () =>
-      activeLineTrace.filter(
-        (point) =>
-          Array.isArray(point) &&
-          point.length >= 2 &&
-          Number.isFinite(point[0]) &&
-          Number.isFinite(point[1]) &&
-          Math.abs(point[0]) <= 180 &&
-          Math.abs(point[1]) <= 90,
-      ),
-    [activeLineTrace],
-  );
+  const activeLineTracePaths = useMemo(() => {
+    const isValidPoint = (point) =>
+      Array.isArray(point) &&
+      point.length >= 2 &&
+      Number.isFinite(point[0]) &&
+      Number.isFinite(point[1]) &&
+      Math.abs(point[0]) <= 180 &&
+      Math.abs(point[1]) <= 90;
+
+    const branches = Array.isArray(activeLineTrace?.[0]?.[0])
+      ? activeLineTrace
+      : [activeLineTrace];
+
+    return branches
+      .filter(Array.isArray)
+      .map((branch) => branch.filter(isValidPoint))
+      .filter((branch) => branch.length > 1);
+  }, [activeLineTrace]);
+
+  // Couleur du tracé et des arrêts de la ligne sélectionnée.
+  //
+  // LINE_COLORS prime sur la couleur de l'API : ce sont les couleurs « maison »
+  // qui corrigent les couleurs GTFS jugées peu lisibles (voir
+  // utils/routeLineResolver.js). C'est la convention suivie partout ailleurs —
+  // notamment par les tronçons d'itinéraire dessinés sur cette même carte et
+  // par les pastilles de ligne. L'ordre inverse faisait ressortir les lignes
+  // Chrono dans leur couleur GTFS, différente de celle de leur pastille.
+  const activeLineColor =
+    LINE_COLORS[activeLine] || lineColors?.[activeLine] || "#2563eb";
 
   const nearestList = userLocation
     ? [...stops]
@@ -972,9 +996,14 @@ export default function StopPickerMap({
     return snapped;
   };
 
-  // Même source de vérité que JourneyDetailsSheet.
-  const getLegGeometry = getJourneyLegGeometry;
   const journeyLegs = journey?.allLegs || [];
+
+  // Tracés exacts des lignes empruntées ; vides tant qu'ils chargent, auquel
+  // cas getLegGeometry retombe sur la polyligne OTP.
+  const lineShapes = useJourneyLineShapes(journeyLegs);
+
+  // Même source de vérité que JourneyDetailsSheet.
+  const getLegGeometry = (leg) => getJourneyLegGeometry(leg, lineShapes);
   const journeyIntermediateStops = journeyLegs.flatMap((leg, legIndex) =>
     (leg.intermediateStops || [])
       .filter(
@@ -1053,9 +1082,13 @@ export default function StopPickerMap({
   }, [journey]);
 
   useEffect(() => {
-    if (safeActiveLineTrace.length < 2) return undefined;
-    const lons = safeActiveLineTrace.map(([lon]) => lon);
-    const lats = safeActiveLineTrace.map(([, lat]) => lat);
+    // Le cadrage doit englober toutes les branches de la ligne, pas seulement
+    // la première : on aplatit ici, contrairement au dessin qui les garde
+    // séparées.
+    const tracePoints = activeLineTracePaths.flat();
+    if (tracePoints.length < 2) return undefined;
+    const lons = tracePoints.map(([lon]) => lon);
+    const lats = tracePoints.map(([, lat]) => lat);
     const timer = setTimeout(
       () =>
         mapRef.current?.fitBounds(
@@ -1071,7 +1104,7 @@ export default function StopPickerMap({
       80,
     );
     return () => clearTimeout(timer);
-  }, [safeActiveLineTrace]);
+  }, [activeLineTracePaths]);
 
   const activeLineMarkerStops = activeLineStops.filter(
     (stop, index, all) =>
@@ -1628,15 +1661,15 @@ export default function StopPickerMap({
                   ]}
                   cursor={allowAddressSelection ? "crosshair" : "grab"}
                 >
-                  {safeActiveLineTrace.length > 1 && (
+                  {activeLineTracePaths.length > 0 && (
                     <Source
                       id="active-stop-line"
                       type="geojson"
                       data={{
                         type: "Feature",
                         geometry: {
-                          type: "LineString",
-                          coordinates: safeActiveLineTrace,
+                          type: "MultiLineString",
+                          coordinates: activeLineTracePaths,
                         },
                       }}
                     >
@@ -1645,10 +1678,7 @@ export default function StopPickerMap({
                         type="line"
                         beforeId="Road labels"
                         paint={{
-                          "line-color":
-                            lineColors?.[activeLine] ||
-                            LINE_COLORS[activeLine] ||
-                            "#2563eb",
+                          "line-color": activeLineColor,
                           "line-width": 5,
                         }}
                         layout={{ "line-cap": "round", "line-join": "round" }}
@@ -1773,7 +1803,7 @@ export default function StopPickerMap({
                           height: 8,
                           borderRadius: "50%",
                           backgroundColor: "white",
-                          border: `2px solid ${lineColors?.[activeLine] || LINE_COLORS[activeLine] || "#2563eb"}`,
+                          border: `2px solid ${activeLineColor}`,
                           boxShadow: "0 1px 3px rgba(0,0,0,0.25)",
                           pointerEvents: "none",
                         }}

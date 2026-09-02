@@ -1,12 +1,25 @@
 import { StrictMode } from "react";
 import { createRoot, hydrateRoot } from "react-dom/client";
 import { HelmetProvider } from "react-helmet-async";
-import "maplibre-gl/dist/maplibre-gl.css";
+// La feuille de style de maplibre est importée par les composants carte
+// eux-mêmes (voir components/lazyMaps.jsx) : elle voyage ainsi dans le chunk
+// chargé à la demande, au lieu d'alourdir le CSS du premier rendu.
 import "./index.css";
 import App from "./App.jsx";
-import { preloadRoutes } from "./utils/routesCache.js";
+import { applyTheme, normalizeTheme } from "./hooks/useTheme.js";
 
 const container = document.getElementById("root");
+
+// Appliqué avant le premier rendu (et non plus dans un effet d'App) : les
+// classes de thème sont ainsi posées sur <html> dès la première peinture, ce
+// qui évite un flash de thème clair et permet à l'écran de chargement des
+// routes de s'afficher immédiatement dans la bonne couleur.
+try {
+  const saved = JSON.parse(localStorage.getItem("tag-express-settings"));
+  applyTheme(normalizeTheme(saved?.theme));
+} catch {
+  applyTheme("light");
+}
 
 const renderApp = () => {
   if (container && container.hasChildNodes()) {
@@ -29,11 +42,8 @@ const renderApp = () => {
   }
 };
 
-(async () => {
-  renderApp();
-  try {
-    await preloadRoutes();
-  } catch (error) {
-    console.error("Préchargement des routes échoué:", error);
-  }
-})();
+// Le préchargement du catalogue de lignes qui se trouvait ici a été retiré :
+// preloadStops() (appelé par App) demande déjà /index/routes via le cache
+// partagé de utils/routesCache.js, si bien que les deux appels se déclenchaient
+// au même instant au démarrage.
+renderApp();

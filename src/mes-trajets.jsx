@@ -15,10 +15,7 @@ import { DisruptionItem } from "./components/DisruptionItem.jsx";
 import { SearchForm } from "./components/SearchSheet.jsx";
 import { NotificationToast } from "./components/NotificationToast.jsx";
 import SplashScreen, { useSplashScreen } from "./components/SplashScreen.jsx";
-import StopPickerMap from "./components/StopPickerMap.jsx";
-import { JourneyMapModal } from "./components/JourneyMapModal.jsx";
-import { JourneyDetailsSheet } from "./components/JourneyDetailsSheet.jsx";
-import { InlineJourneyMap } from "./components/JourneyDetailsSheet.jsx";
+import { JourneyDetailsSheet, StopPickerMap } from "./components/lazyMaps.jsx";
 import { LineInfoSheet } from "./components/LineInfoSheet.jsx";
 import { useTheme } from "./hooks/useTheme.js";
 import {

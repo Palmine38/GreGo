@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS = {
     numItineraries: 5,
     showJourneyDisruptions: true,
     showIntermediateStops: true,
+    lightMode: false,
 };
 
 /**
@@ -28,6 +29,7 @@ export function useSettings() {
                     numItineraries: parsed.numItineraries ?? 5,
                     showJourneyDisruptions: parsed.showJourneyDisruptions ?? true,
                     showIntermediateStops: parsed.showIntermediateStops ?? true,
+                    lightMode: parsed.lightMode ?? false,
                 });
             }
         } catch (e) {

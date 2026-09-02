@@ -2,8 +2,41 @@ import { useEffect, useState } from "react";
 import { removeAccents } from "../utils/journey.js";
 import { normalizeRouteRef } from "../utils/routeLineResolver.js";
 import { getRoutes } from "../utils/routesCache.js";
+import { idbGet, idbSet } from "../utils/persistentCache.js";
+import { getCacheTtl } from "../utils/lightMode.js";
 
 const roundCoord = (n) => Math.round(n * 1e5) / 1e5;
+
+// Le référentiel d'arrêts se reconstruit à partir d'une requête par ligne du
+// réseau, soit plusieurs dizaines d'appels. C'est de loin le poste réseau le
+// plus lourd du démarrage, alors que son résultat ne change qu'au rythme des
+// évolutions du réseau. On le garde donc sur le disque du navigateur : seule la
+// première visite (ou la première de la journée) paie le coût complet.
+const STOPS_CACHE_KEY = "stops:v1";
+
+// Plafond de requêtes simultanées. Sans lui, les quelques dizaines d'appels
+// partaient d'un bloc : en HTTP/2 ils sont tous multiplexés sur la même
+// connexion et se partagent la bande passante, ce qui, en 3G, retarde
+// *chacun* d'eux — et avec eux le premier écran exploitable. Les traiter par
+// petits lots fait arriver les premiers résultats bien plus tôt.
+const MAX_CONCURRENT_REQUESTS = 6;
+
+async function mapWithConcurrency(items, limit, task) {
+  const results = new Array(items.length);
+  let cursor = 0;
+
+  const worker = async () => {
+    while (cursor < items.length) {
+      const index = cursor++;
+      results[index] = await task(items[index]);
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, worker),
+  );
+  return results;
+}
 
 // Réseaux exploités sur data.mobilites-m.fr (agglo grenobloise + périurbain)
 const NETWORK_PREFIXES = [
@@ -31,6 +64,23 @@ async function fetchStops() {
     const stopsList = [];
     const routeLongNames = {};
 
+    // Cache disque : s'il répond, on évite l'intégralité des requêtes réseau.
+    try {
+      const cached = await idbGet(STOPS_CACHE_KEY);
+      if (cached?.value?.stopsList?.length) {
+        cachedStopsMap = cached.value.stopsMap;
+        cachedStopsList = cached.value.stopsList;
+        cachedRouteLongNames = cached.value.routeLongNames;
+        return {
+          stopsMap: cachedStopsMap,
+          stopsList: cachedStopsList,
+          routeLongNames: cachedRouteLongNames,
+        };
+      }
+    } catch {
+      // Cache indisponible : on retombe simplement sur le chemin réseau.
+    }
+
     try {
       const routes = await getRoutes();
       // On garde le longName de chaque ligne au passage : il sert ensuite à
@@ -57,8 +107,10 @@ async function fetchStops() {
       const newMap = {};
       const list = [];
 
-      await Promise.all(
-        networkLines.map(async ({ id: routeId, shortName }) => {
+      await mapWithConcurrency(
+        networkLines,
+        MAX_CONCURRENT_REQUESTS,
+        async ({ id: routeId, shortName }) => {
           const l = shortName;
           try {
             const r = await fetch(
@@ -115,7 +167,7 @@ async function fetchStops() {
               });
             });
           } catch {}
-        }),
+        },
       );
 
       const finalMap = {};
@@ -149,6 +201,21 @@ async function fetchStops() {
       cachedStopsMap = finalMap;
       cachedStopsList = [...stopsByName.values()];
       cachedRouteLongNames = routeLongNames;
+
+      // Écriture non attendue : elle ne doit pas retarder le premier rendu.
+      // Seul un référentiel complet est mémorisé, pour ne jamais figer sur le
+      // disque un résultat partiel dû à des requêtes échouées.
+      if (cachedStopsList.length) {
+        void idbSet(
+          STOPS_CACHE_KEY,
+          {
+            stopsMap: cachedStopsMap,
+            stopsList: cachedStopsList,
+            routeLongNames: cachedRouteLongNames,
+          },
+          getCacheTtl(),
+        );
+      }
     } catch {
       cachedStopsMap = {};
       cachedStopsList = [];

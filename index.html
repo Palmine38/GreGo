@@ -6,7 +6,12 @@
       name="google-site-verification"
       content="74HXJpHTolXUxTK_SUCjoiviUVXpM7zJK-RLfevcTwU"
     />
-    <link rel="icon" type="image/png" href="/favicon.png" />
+    <!-- favicon.svg (9 ko) plutôt que favicon.png : ce dernier est un 4800x4800
+         de 363 ko, téléchargé à chaque visite pour être affiché en 32 px.
+         Le .ico sert de repli aux navigateurs sans support SVG ; le navigateur
+         ne télécharge que celui qu'il retient. -->
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="canonical" href="https://gre-go.app/" />
@@ -55,12 +60,29 @@
       }
     </script>
 
+    <!-- Montserrat en police variable sur la seule plage de graisses réellement
+         utilisée (400 à 700). L'axe italique et Permanent Marker ont été retirés :
+         ni l'un ni l'autre n'était utilisé par l'application, mais tous deux
+         étaient téléchargés à chaque visite.
+
+         Le chargement est non bloquant (preload + bascule en stylesheet) :
+         combiné à `display=swap`, le texte s'affiche immédiatement dans la
+         police système puis bascule sur Montserrat, au lieu de retarder le
+         premier rendu le temps du téléchargement. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&family=Permanent+Marker&display=swap"
-      rel="stylesheet"
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400..700&display=swap"
+      onload="this.onload=null;this.rel='stylesheet'"
     />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400..700&display=swap"
+      />
+    </noscript>
 
     <!-- ── Pré-splash statique (avant que React ne charge) ─────────────────
          Évite le flash blanc au lancement : ce bloc s'affiche dès le tout

@@ -5,11 +5,11 @@ import { useStops } from "./hooks/useStops.js";
 import { useDisruptions } from "./hooks/useDisruptions.js";
 import { useLineColors } from "./hooks/useLineColors.js";
 import { useSettings } from "./hooks/useSettings.js";
-import { getLegGeometry } from "./components/JourneyDetailsSheet.jsx";
+import { getLegGeometry } from "./utils/legGeometry.js";
 import { FastResearchResultSheet } from "./components/FastResearchResultSheet.jsx";
 import { LineInfoSheet } from "./components/LineInfoSheet.jsx";
 import { NotificationToast } from "./components/NotificationToast.jsx";
-import StopPickerMap from "./components/StopPickerMap.jsx";
+import StopPickerMap from "./components/lazyMaps.jsx";
 import { StopDetailsSheet } from "./components/StopDetailsSheet.jsx";
 import { useGbfs } from "./hooks/useGbfs.js";
 import {
@@ -31,6 +31,7 @@ import {
   normalizeSearchText as normalizeStopName,
 } from "./utils/addressSuggestions.js";
 import { getSearchErrorMessage } from "./utils/searchError.js";
+import { resolveLineGeometry, toLinePaths } from "./utils/lineShapes.js";
 
 const CACHE_KEY = "tag-express-fast-research-cache";
 const CACHE_DURATION = 120000; // 2 minutes
@@ -578,6 +579,24 @@ export default function FastResearch() {
         : [],
     );
     setActiveStopLineStops([]);
+
+    // Le tracé publié de la ligne : la forme réelle de la voie, telle que la
+    // diffuse MTAG. C'est celui qu'on veut voir en sélectionnant une ligne.
+    //
+    // Les autres sources ci-dessous n'en sont que des approximations : un
+    // tronçon d'itinéraire ne couvre que le trajet demandé et se recale sur ses
+    // arrêts, et le repli en segments droits ne suit pas la voie du tout. Elles
+    // ne servent plus que si la ligne n'a pas de tracé publié (c'est le cas des
+    // navettes de remplacement).
+    let publishedPaths = [];
+    try {
+      publishedPaths = toLinePaths(await resolveLineGeometry(normalizedLine));
+    } catch {
+      publishedPaths = [];
+    }
+    if (requestId !== stopLineRequestRef.current) return;
+    if (publishedPaths.length > 0) setActiveStopLineTrace(publishedPaths);
+
     // Les poteaux (stops) d'une ligne sont déjà ordonnés selon son parcours :
     // ils constituent un repli fiable lorsque la géométrie détaillée n'est pas fournie.
     try {
@@ -705,6 +724,7 @@ export default function FastResearch() {
 
       let geometry = displayedJourneyGeometry;
       if (
+        publishedPaths.length === 0 &&
         !isUsableLineGeometry(geometry) &&
         firstStop?.clusterId &&
         lastStop?.clusterId
@@ -772,12 +792,15 @@ export default function FastResearch() {
       ]);
       // Certaines réponses OTP contiennent une polyline tronquée ou invalide.
       // MapLibre ne dessine alors rien, même si les arrêts ont bien été chargés.
-      setActiveStopLineTrace(
-        isUsableLineGeometry(geometry) ? geometry : stopFallback,
-      );
+      if (publishedPaths.length === 0) {
+        setActiveStopLineTrace(
+          isUsableLineGeometry(geometry) ? geometry : stopFallback,
+        );
+      }
     } catch {
       if (requestId !== stopLineRequestRef.current) return;
-      setActiveStopLineTrace([]);
+      // Le tracé publié, lui, ne dépend pas de la liste d'arrêts : on le garde.
+      if (publishedPaths.length === 0) setActiveStopLineTrace([]);
       setActiveStopLineStops([]);
     }
     // Le tracé apparaît derrière la fiche, qui reste ouverte sur l'arrêt.

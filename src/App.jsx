@@ -5,25 +5,42 @@ import {
   Navigate,
   useNavigate,
 } from "react-router-dom";
-import { useEffect } from "react";
-import FastResearch from "./fast-research.jsx";
-import MesTrajets from "./mes-trajets.jsx";
-import Settings from "./settings.jsx";
-import NoMobile from "./nomobile.jsx";
-import SuiviBeta from "./suivi-beta.jsx";
-import InfoTrafic from "./infotrafic.jsx";
-import { applyTheme, normalizeTheme } from "./hooks/useTheme.js";
+import { lazy, Suspense, useEffect } from "react";
+import { getTheme } from "./hooks/useTheme.js";
 import { preloadStops } from "./hooks/useStops.js";
 import { DevOverlay } from "./components/devOverlay.jsx";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 import { PageSeo } from "./components/PageSeo.jsx";
+import SplashScreen from "./components/SplashScreen.jsx";
+import { prefetchMapChunk } from "./components/mapChunkLoaders.js";
+import { scheduleIdle } from "./utils/scheduleIdle.js";
+import { useLightMode } from "./hooks/useLightMode.js";
 import { useInstallPrompt } from "./hooks/useInstallPrompt.js";
 import { InstallGreGoSheet } from "./components/InstallGreGoSheet.jsx";
 import {
   notifyInstallPromptResolved,
 } from "./utils/installPromptGate.js";
 import "./App.css";
+
+// Chaque page est chargée à la demande : sans cela, ouvrir /mes-trajets
+// téléchargeait aussi Settings, InfoTrafic et FastResearch (plus de 170 ko de
+// source) avant le premier rendu, alors qu'une seule page n'est jamais affichée
+// à la fois.
+const FastResearch = lazy(() => import("./fast-research.jsx"));
+const MesTrajets = lazy(() => import("./mes-trajets.jsx"));
+const Settings = lazy(() => import("./settings.jsx"));
+const NoMobile = lazy(() => import("./nomobile.jsx"));
+const InfoTrafic = lazy(() => import("./infotrafic.jsx"));
+
+// Affiché le temps qu'arrive le module de la page. Volontairement identique au
+// pré-splash de index.html : le relais entre les deux est invisible, là où un
+// fallback vide aurait provoqué un flash de page blanche. Le thème est déjà
+// posé sur <html> par main.jsx avant le premier rendu, donc getTheme() renvoie
+// ici la bonne valeur dès le départ.
+function RouteFallback() {
+  return <SplashScreen theme={getTheme()} />;
+}
 
 function DeviceGuard({ children }) {
   const navigate = useNavigate();
@@ -75,21 +92,31 @@ function InstallPromptGate() {
 }
 
 function App() {
-  useEffect(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem("tag-express-settings"));
-      applyTheme(normalizeTheme(saved?.theme));
-    } catch {
-      applyTheme("light");
-    }
+  const lightMode = useLightMode();
 
-    preloadStops();
+  useEffect(() => {
+    // Le thème est désormais appliqué par main.jsx avant le premier rendu, pour
+    // que le fallback de route s'affiche d'emblée dans la bonne couleur.
+
+    // Ces deux préparations sont utiles mais non urgentes : les déclencher
+    // immédiatement les ferait concurrencer le téléchargement du code de la
+    // page, qui lui conditionne le premier rendu. On attend donc que le
+    // navigateur ait fini l'essentiel.
+    //
+    // (La page appelle de toute façon useStops() en montant : ce préchargement
+    // n'est qu'une avance, jamais une condition.)
+    // Les arrêts d'abord (ils conditionnent la recherche), la carte ensuite :
+    // prefetchMapChunk planifie sa propre période d'inactivité, ce qui laisse
+    // naturellement passer le référentiel en premier.
+    scheduleIdle(() => preloadStops());
+    prefetchMapChunk();
   }, []);
 
   return (
     <Router>
       <DevOverlay />
       <InstallPromptGate />
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/mobile" element={<NoMobile />} />
         <Route
@@ -122,15 +149,10 @@ function App() {
             </SeoRoute>
           }
         />
-        {/* PAS ENCORE DISPONIBLE SUR LE SITE PUBLIC
-        <Route
-          path="/suivi-beta/"
-          element={
-            <DeviceGuard>
-              <SuiviBeta />
-            </DeviceGuard>
-          }
-        /> */}
+        {/* PAS ENCORE DISPONIBLE SUR LE SITE PUBLIC : la route /suivi-beta est
+            désactivée. Son import a été retiré pour que suivi-beta.jsx ne soit
+            plus embarqué dans le bundle ; le rétablir suppose de réintroduire
+            un `lazy(() => import("./suivi-beta.jsx"))` avec les autres pages. */}
         <Route
           path="/infotrafic"
           element={
@@ -150,8 +172,15 @@ function App() {
           }
         />
       </Routes>
-      <Analytics />
-      <SpeedInsights />
+      </Suspense>
+      {/* Mode léger : les deux scripts de mesure d'audience sont chargés depuis
+          le réseau et n'apportent rien à l'utilisateur. Ils sautent en premier. */}
+      {!lightMode && (
+        <>
+          <Analytics />
+          <SpeedInsights />
+        </>
+      )}
     </Router>
   );
 }

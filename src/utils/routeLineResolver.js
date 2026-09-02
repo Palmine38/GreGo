@@ -17,21 +17,11 @@
 // utils/allLines.js). resolveRouteLine centralise ça.
 
 import { LINE_COLORS } from "../components/lines-icons.jsx";
+import { getRouteCandidates, normalizeRouteRef } from "./routeRef.js";
 
-export const normalizeRouteRef = (value) => {
-  if (!value) return null;
-  const code = String(value)
-    .toUpperCase()
-    .replace(/^(?:SEM|SE2):?/, "")
-    .replace(/^(?:SEM|SE2)_/, "")
-    .trim();
-  return code || null;
-};
-
-export const getRouteCandidates = (...values) => {
-  const candidates = values.map(normalizeRouteRef).filter(Boolean);
-  return Array.from(new Set(candidates));
-};
+// Réexportées pour ne pas casser les appelants historiques ; leur définition
+// vit dans routeRef.js, qui ne dépend d'aucun composant.
+export { getRouteCandidates, normalizeRouteRef };
 
 const isCLine = (shortName) =>
   /^C[1-8]$/.test(String(shortName || "").toUpperCase());
