@@ -40,11 +40,19 @@ export function SearchForm({
   line,
   searchDate,
   searchTime,
+  // Heures de départ / d'arrivée souhaitées, au format "HH:MM".
+  // mes-trajets.jsx transmettait déjà ces quatre props, mais le formulaire ne
+  // les déclarait pas : l'état et la logique de recherche existaient sans
+  // interface pour les régler.
+  departureTime,
+  arrivalTime,
   setDep,
   setArr,
   setLine,
   setSearchDate,
   setSearchTime,
+  setDepartureTime,
+  setArrivalTime,
   depSuggestions,
   arrSuggestions,
   depAddressSuggestions = [],
@@ -82,6 +90,25 @@ export function SearchForm({
     const nextDate = new Date(searchDate || new Date());
     nextDate.setFullYear(year, month - 1, day);
     setSearchDate(nextDate);
+  };
+
+  // « Partir à » et « Arriver à » s'excluent : renseigner l'un efface l'autre.
+  //
+  // Ce n'est pas un choix esthétique mais l'application de la règle déjà en
+  // vigueur côté recherche (voir mes-trajets.jsx) : l'heure de départ sert
+  // d'ancre dès qu'elle est présente, et `arriveBy` n'est vrai que si une heure
+  // d'arrivée est saisie *sans* heure de départ. Laisser les deux remplies
+  // afficherait donc une contrainte d'arrivée que la recherche ignorerait en
+  // silence — l'utilisateur croirait chercher « arriver à 18h00 » tout en
+  // obtenant un départ à 8h00.
+  const handleDepartureTimeChange = (value) => {
+    setDepartureTime(value);
+    if (value && arrivalTime) setArrivalTime("");
+  };
+
+  const handleArrivalTimeChange = (value) => {
+    setArrivalTime(value);
+    if (value && departureTime) setDepartureTime("");
   };
 
   const theme = useTheme();
@@ -426,6 +453,50 @@ export function SearchForm({
                 }}
                 className="min-w-0 flex-1 border p-2 rounded-lg"
                 aria-label="Heure de recherche"
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Partir à / Arriver à — exactement le même gabarit que « Chercher
+            pour » juste au-dessus, à toutes les tailles d'écran :
+
+            - une seule cellule de la grille (jamais `col-span-2`), donc les
+              deux `input` `flex-1` ont la même largeur que le couple date +
+              heure de « Chercher pour » ;
+            - `sm:col-start-2` : sur écran large (grille à 2 colonnes) le bloc
+              se cale dans la colonne de droite, directement sous « Chercher
+              pour », au lieu de retomber dans la colonne de gauche sous
+              « Ligne ». Sur mobile (1 colonne) cette classe est sans effet et
+              le bloc s'affiche pleine largeur, comme le reste.
+
+            La structure reprend celle de « Chercher pour » : une rangée de
+            libellés, puis une rangée d'`input`, pour que les deux blocs aient
+            la même hauteur. */}
+        {setDepartureTime && setArrivalTime && (
+          <div className="space-y-1 sm:col-start-2">
+            <div className="flex gap-2">
+              <span className="min-w-0 flex-1 text-sm text-gray-600">
+                Partir à
+              </span>
+              <span className="min-w-0 flex-1 text-sm text-gray-600">
+                Arriver à
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="time"
+                value={departureTime || ""}
+                onChange={(e) => handleDepartureTimeChange(e.target.value)}
+                className="min-w-0 flex-1 border p-2 rounded-lg"
+                aria-label="Heure de départ souhaitée"
+              />
+              <input
+                type="time"
+                value={arrivalTime || ""}
+                onChange={(e) => handleArrivalTimeChange(e.target.value)}
+                className="min-w-0 flex-1 border p-2 rounded-lg"
+                aria-label="Heure d'arrivée souhaitée"
               />
             </div>
           </div>

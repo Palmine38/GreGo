@@ -960,6 +960,13 @@ export default function MesTrajets() {
     const depValue = params.dep ?? dep;
     const arrValue = params.arr ?? arr;
     const lineValue = params.line ?? line;
+    // Mêmes règles de repli que dep/arr/line ci-dessus : sans elles, tout
+    // appelant qui ne repasse pas explicitement ces heures (rafraîchissement
+    // automatique, bouton Actualiser, changement de réglages) relançait la
+    // recherche en perdant la contrainte « Partir à » / « Arriver à », et
+    // écrasait des résultats corrects par une recherche au départ immédiat.
+    const departureTimeValue = params.departureTime ?? departureTime;
+    const arrivalTimeValue = params.arrivalTime ?? arrivalTime;
     const trajetKey = params.trajetKey || currentTrajet;
     const isManual = params.manual === true;
     const keepInputsOpen = params.keepInputsOpen === true;
@@ -1024,7 +1031,7 @@ export default function MesTrajets() {
     }
 
     const requestedTime = getNextDateForTime(
-      params.departureTime || params.arrivalTime || params.searchTime,
+      departureTimeValue || arrivalTimeValue || params.searchTime,
       params.searchDate || searchBaseDateRef.current,
     );
     const baseTime =
@@ -1049,7 +1056,7 @@ export default function MesTrajets() {
         : toId.split("::")[1] || toId,
       queryTime,
       settings: savedSettings,
-      arriveBy: Boolean(params.arrivalTime && !params.departureTime),
+      arriveBy: Boolean(arrivalTimeValue && !departureTimeValue),
     });
 
     try {
@@ -1120,7 +1127,7 @@ export default function MesTrajets() {
         );
         setTimeOffset(offset);
         setSearchBaseDate(anchorTime);
-        if (!params.departureTime && !params.arrivalTime) {
+        if (!departureTimeValue && !arrivalTimeValue) {
           setSearchTime(formatTimeInputValue(queryTime));
         }
         if (!keepInputsOpen) setInputsOpen(false);
@@ -1640,6 +1647,17 @@ export default function MesTrajets() {
   );
   useEffect(() => {
     if (timeOffset !== 0) return; // uniquement en mode "temps réel"
+    // Pas de rafraîchissement quand l'utilisateur a fixé une heure de départ ou
+    // d'arrivée. Ce mécanisme sert à récupérer des horaires devenus obsolètes
+    // dans une recherche « maintenant » ; il n'a pas de sens sur une recherche
+    // ancrée à une heure choisie, qui renverra exactement les mêmes résultats.
+    //
+    // C'est aussi une protection : avec « Arriver à », `visibleResults` est
+    // vide par construction (il ne retient que les départs postérieurs à
+    // l'heure de référence, or on cherche justement des trajets qui partent
+    // *avant* l'heure d'arrivée voulue). Sans ce garde, la condition de sortie
+    // n'est jamais atteinte et l'effet relance la recherche en boucle.
+    if (departureTime || arrivalTime) return;
     if (loading) return;
     if (results.length === 0) return; // rien à afficher, pas un bug
     if (visibleResults.length > 0) {
@@ -1661,6 +1679,8 @@ export default function MesTrajets() {
     loading,
     timeOffset,
     currentTrajet,
+    departureTime,
+    arrivalTime,
   ]);
 
   // ─────────────────────────────────────────────────────────────────────────
