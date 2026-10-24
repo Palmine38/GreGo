@@ -6,12 +6,12 @@
       name="google-site-verification"
       content="74HXJpHTolXUxTK_SUCjoiviUVXpM7zJK-RLfevcTwU"
     />
-    <!-- favicon.svg (9 ko) plutôt que favicon.png : ce dernier est un 4800x4800
-         de 363 ko, téléchargé à chaque visite pour être affiché en 32 px.
-         Le .ico sert de repli aux navigateurs sans support SVG ; le navigateur
-         ne télécharge que celui qu'il retient. -->
-    <link rel="icon" href="/favicon.ico" sizes="32x32" />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- favicon.ico (6 ko, 16/32/48 px) tiré de favicon.png, plutôt que
+         favicon.png lui-même, téléchargé à chaque visite pour être affiché en
+         32 px. Le favicon.svg déclaré ici auparavant était le logo par défaut
+         de Vite : les navigateurs le préféraient au .ico et GreGo n'avait plus
+         son icône. -->
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.json" />
     <link rel="canonical" href="https://gre-go.app/" />

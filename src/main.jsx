@@ -5,8 +5,11 @@ import { HelmetProvider } from "react-helmet-async";
 // eux-mêmes (voir components/lazyMaps.jsx) : elle voyage ainsi dans le chunk
 // chargé à la demande, au lieu d'alourdir le CSS du premier rendu.
 import "./index.css";
+import "./desktop.css";
 import App from "./App.jsx";
 import { applyTheme, normalizeTheme } from "./hooks/useTheme.js";
+import { applyDesktopClass } from "./hooks/useIsDesktop.js";
+import { readRailExpanded } from "./components/desktop/desktopPanels.js";
 
 const container = document.getElementById("root");
 
@@ -19,6 +22,12 @@ try {
   applyTheme(normalizeTheme(saved?.theme));
 } catch {
   applyTheme("light");
+}
+
+// Même logique pour le shell desktop : la largeur de la barre latérale est
+// réservée dès la première peinture, sans décalage du contenu au montage.
+if (applyDesktopClass()) {
+  document.documentElement.dataset.gdRail = readRailExpanded() ? "wide" : "slim";
 }
 
 const renderApp = () => {

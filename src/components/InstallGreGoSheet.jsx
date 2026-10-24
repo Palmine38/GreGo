@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Sheet } from "react-modal-sheet";
+import { Sheet } from "./AdaptiveSheet.jsx";
 import { GrPowerReset } from "react-icons/gr";
 import { useTheme } from "../hooks/useTheme.js";
 

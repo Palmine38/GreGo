@@ -76,6 +76,29 @@ export function SearchForm({
     return value.includes("::") ? value.split("::")[0] : value;
   };
   const depUsesCurrentLocation = isCurrentLocationValue(dep);
+
+  // Entrée au clavier : retient la première suggestion affichée, sinon lance
+  // la recherche (comme un clic sur « Rechercher »).
+  const handleEnter = (field) => (event) => {
+    if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    if (field && activeInput === field) {
+      const value = field === "dep" ? dep : arr;
+      const display = formatInputValue(
+        value,
+        field === "dep" ? depDisplay : arrDisplay,
+      );
+      const stops = field === "dep" ? depSuggestions : arrSuggestions;
+      const addresses =
+        field === "dep" ? depAddressSuggestions : arrAddressSuggestions;
+      const first = stops[0] ?? addresses[0]?.value;
+      if (value && first && first !== display) {
+        onSelectSuggestion(first, field);
+        return;
+      }
+    }
+    if (!loading && stopsLoaded) onSearch();
+  };
   const formatDateInputValue = (date) => {
     if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
     const year = date.getFullYear();
@@ -169,6 +192,7 @@ export function SearchForm({
                 data-onboarding="dep-input"
                 value={formatInputValue(dep, depDisplay)}
                 onChange={(e) => setDep(e.target.value)}
+                onKeyDown={handleEnter("dep")}
                 onClick={() => setActiveInput("dep")}
                 onFocus={() => setActiveInput("dep")}
                 className={`w-full border p-2 rounded-lg ${depUsesCurrentLocation ? "pr-8" : ""}`}
@@ -335,6 +359,7 @@ export function SearchForm({
               data-onboarding="arr-input"
               value={formatInputValue(arr, arrDisplay)}
               onChange={(e) => setArr(e.target.value)}
+              onKeyDown={handleEnter("arr")}
               onClick={() => setActiveInput("arr")}
               onFocus={() => setActiveInput("arr")}
               className="flex-1 border p-2 rounded-lg"
@@ -427,6 +452,7 @@ export function SearchForm({
           <input
             value={line}
             onChange={(e) => setLine(e.target.value)}
+            onKeyDown={handleEnter(null)}
             className="w-full border p-2 rounded-lg"
             placeholder="ex: A, B, C1..."
           />

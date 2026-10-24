@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import LineIcon from "./lines-icons.jsx";
 import { DisruptionItem } from "./DisruptionItem.jsx";
-import { Sheet } from "react-modal-sheet";
+import { Sheet } from "./AdaptiveSheet.jsx";
 
 export function LineInfoSheet({
   lineKey,

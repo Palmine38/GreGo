@@ -1,5 +1,5 @@
 import React from "react";
-import { Sheet } from "react-modal-sheet";
+import { Sheet } from "./AdaptiveSheet.jsx";
 
 export function MapSheet({ isOpen, onClose, title, children }) {
   return (
