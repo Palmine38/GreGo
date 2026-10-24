@@ -1,5 +1,6 @@
 import React, { memo, useEffect, useRef, useState } from "react";
 import Navbar from "./navbar.jsx";
+import { isDesktopViewport } from "./hooks/useIsDesktop.js";
 import { useCurrentTime } from "./hooks/useCurrentTime.js";
 import { useStops } from "./hooks/useStops.js";
 import { useDisruptions } from "./hooks/useDisruptions.js";
@@ -206,6 +207,10 @@ export default function FastResearch() {
   }, [quickSearch, hasExactStopMatch]);
 
   useEffect(() => {
+    // Sur ordinateur, la position n'apporte rien à la carte : pas de demande
+    // d'autorisation à l'ouverture. Elle reste demandée si l'utilisateur
+    // lance un trajet depuis sa position.
+    if (isDesktopViewport()) return;
     getCurrentLocationCoords()
       .then(setUserPosition)
       .catch(() => {});
@@ -806,13 +811,21 @@ export default function FastResearch() {
     // Le tracé apparaît derrière la fiche, qui reste ouverte sur l'arrêt.
   };
 
-  const setStopAsArrival = async (stop) => {
-    const value = `${stop.name}::${stop.lat},${stop.lon}`;
-    setSelectedMapStop(null);
+  // Retire la ligne affichée sur la carte. La requête de tracé encore en
+  // cours est invalidée : sans cela, elle redessinait la ligne une fois la
+  // fiche fermée, et le tracé restait sur la carte.
+  const clearStopLine = () => {
+    stopLineRequestRef.current += 1;
     setActiveStopLine(null);
     setActiveStopInfoLine(null);
     setActiveStopLineTrace([]);
     setActiveStopLineStops([]);
+  };
+
+  const setStopAsArrival = async (stop) => {
+    const value = `${stop.name}::${stop.lat},${stop.lon}`;
+    setSelectedMapStop(null);
+    clearStopLine();
     setError("");
     setArr(value);
     setQuickSearch(stop.name);
@@ -837,10 +850,7 @@ export default function FastResearch() {
     // (cas d'ouverture depuis une suggestion d'arrêt) — sans effet sinon
     // (ex. clic sur un poteau depuis la carte).
     quickSearchRef.current?.blur();
-    setActiveStopLine(null);
-    setActiveStopInfoLine(null);
-    setActiveStopLineTrace([]);
-    setActiveStopLineStops([]);
+    clearStopLine();
     setSelectedMapStop(stop);
   };
 
@@ -864,10 +874,7 @@ export default function FastResearch() {
 
   const closeMapStop = () => {
     setSelectedMapStop(null);
-    setActiveStopLine(null);
-    setActiveStopInfoLine(null);
-    setActiveStopLineTrace([]);
-    setActiveStopLineStops([]);
+    clearStopLine();
   };
 
   const selectQuickDestination = async (
@@ -969,7 +976,7 @@ export default function FastResearch() {
         variant={error.startsWith("Aucun") ? "warning" : "error"}
       />
 
-      <div className="fixed top-24 left-4 right-4 z-30">
+      <div className="gd-floating-search fixed top-24 left-4 right-4 z-30">
         <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-lg">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -1110,7 +1117,7 @@ export default function FastResearch() {
           onSetArrival={setStopAsArrival}
           onLineSelect={selectStopLine}
           activeLine={activeStopInfoLine}
-          onBack={() => setActiveStopInfoLine(null)}
+          onBack={clearStopLine}
           getLineDisruptions={getLineDisruptions}
           lineColors={lineColors}
         />

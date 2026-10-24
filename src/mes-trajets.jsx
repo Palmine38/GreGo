@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Sheet } from "react-modal-sheet";
+import { Sheet } from "./components/AdaptiveSheet.jsx";
 import Navbar from "./navbar.jsx";
 import LineIcon from "./lines-icons.jsx";
 import { useCurrentTime } from "./hooks/useCurrentTime.js";
@@ -48,6 +48,11 @@ import {
   INSTALL_PROMPT_RESOLVED_EVENT,
   isInstallPromptResolved,
 } from "./utils/installPromptGate.js";
+import { isDesktopViewport } from "./hooks/useIsDesktop.js";
+import {
+  SELECT_TRAJET_EVENT,
+  TRAJETS_CHANGED_EVENT,
+} from "./components/desktop/desktopPanels.js";
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
 const DEFAULT_TRAJET = {
@@ -359,6 +364,35 @@ export default function MesTrajets() {
     return () => window.clearTimeout(timer);
   }, [showOnboardingCongrats]);
 
+  // Raccourci caché : « ² » (touche sous Échap en AZERTY) pressé 5 fois de
+  // suite pendant le tutoriel le ferme définitivement.
+  const skipOnboardingRef = useRef(skipOnboarding);
+  useEffect(() => {
+    skipOnboardingRef.current = skipOnboarding;
+  });
+  useEffect(() => {
+    if (!onboardingActive) return;
+    let presses = 0;
+    let resetTimer = null;
+    const onKey = (event) => {
+      if (event.key !== "²" && event.code !== "Backquote") return;
+      presses += 1;
+      clearTimeout(resetTimer);
+      resetTimer = setTimeout(() => {
+        presses = 0;
+      }, 1500);
+      if (presses >= 5) {
+        event.preventDefault();
+        skipOnboardingRef.current();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      clearTimeout(resetTimer);
+    };
+  }, [onboardingActive]);
+
   useEffect(() => {
     const resolve = () => setInstallPromptResolved(true);
     window.addEventListener(INSTALL_PROMPT_RESOLVED_EVENT, resolve);
@@ -434,6 +468,9 @@ export default function MesTrajets() {
     if (!loadedFromStorage || !installPromptResolved) return;
     if (onboardingStep !== null) return;
     if (localStorage.getItem(TRIPS_ONBOARDING_STORAGE_KEY)) return;
+    // Pas de tutoriel sur ordinateur : il guide les gestes de l'interface
+    // mobile (bouton flottant, sheet du bas), absents de la version PC.
+    if (isDesktopViewport()) return;
 
     let hasConfiguredTrajet = configuredTrajetKeys.length > 0;
     if (!hasConfiguredTrajet) {
@@ -661,6 +698,7 @@ export default function MesTrajets() {
       return;
     }
     localStorage.setItem("tag-express-trajets", JSON.stringify(trajets));
+    window.dispatchEvent(new Event(TRAJETS_CHANGED_EVENT));
   }, [trajets]);
 
   // ── Chargement initial ────────────────────────────────────────────────────
@@ -1591,6 +1629,17 @@ export default function MesTrajets() {
     loadTrajet(t);
   };
 
+  // Sélection depuis le panneau « Trajets enregistrés » du shell desktop.
+  const loadTrajetRef = useRef(loadTrajet);
+  useEffect(() => {
+    loadTrajetRef.current = loadTrajet;
+  });
+  useEffect(() => {
+    const onSelect = (event) => loadTrajetRef.current(event.detail);
+    window.addEventListener(SELECT_TRAJET_EVENT, onSelect);
+    return () => window.removeEventListener(SELECT_TRAJET_EVENT, onSelect);
+  }, []);
+
   // ── Couleur d'ombre du bouton en cours de réorganisation, selon le thème ──
   const dragShadowColor =
     theme === "gray"
@@ -1828,10 +1877,10 @@ export default function MesTrajets() {
         </div>
       )}
 
-      <div className="min-h-screen relative bg-[#F8FAFC] pb-28">
+      <div className="gd-page min-h-screen relative bg-[#F8FAFC] pb-28">
         {/* ── Sélecteur de trajets ────────────────────────────────────── */}
         <div
-          className="px-4 pt-4 pb-4"
+          className="gd-trip-bar px-4 pt-4 pb-4"
           style={{
             position: "relative",
             zIndex: draggingTrajetKey ? 9995 : "auto",

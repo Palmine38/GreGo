@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from "react";
-import { Sheet } from "react-modal-sheet";
+import { Sheet } from "./AdaptiveSheet.jsx";
 import LineIcon from "./lines-icons.jsx";
 
 async function fetchStopLines(stopCode) {

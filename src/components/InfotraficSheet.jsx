@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Sheet } from "react-modal-sheet";
+import { Sheet } from "./AdaptiveSheet.jsx";
 import LineIcon from "./lines-icons.jsx";
 import { DisruptionItem } from "./DisruptionItem.jsx";
 import { useDisruptions } from "../hooks/useDisruptions.js";

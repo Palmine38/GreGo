@@ -1,0 +1,1358 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Shell desktop de GreGo.
+
+   Tout ce fichier ne s'applique que sous `html.is-desktop` (posée par
+   hooks/useIsDesktop.js) : l'interface mobile n'est pas concernée.
+
+   Principe : un « chrome » discret (barre latérale + panneau) entoure un
+   canevas arrondi dans lequel vivent les pages existantes. La fenêtre reste
+   le conteneur de défilement — les pages s'appuient sur window.scrollY — et le
+   canevas est dessiné par un cadre fixe (.gd-frame) dont l'ombre géante peint
+   le chrome tout autour.
+   ───────────────────────────────────────────────────────────────────────── */
+
+html.is-desktop {
+  --gd-rail: 64px;
+  /* Panneau du shell (trajets, perturbations…) et sheet des pages, côte à
+     côte entre la barre et le canevas. */
+  --gd-shell-panel: 0px;
+  --gd-sheet: 0px;
+  --gd-panel: calc(var(--gd-shell-panel) + var(--gd-sheet));
+  --gd-inset: calc(var(--gd-rail) + var(--gd-panel));
+  --gd-gap: 8px;
+  --gd-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  --gd-chrome: #e7eaf0;
+  --gd-surface: #f3f5f8;
+  --gd-canvas: #f8fafc;
+  --gd-active: #ffffff;
+  --gd-ink: #0f172a;
+  --gd-muted: #64748b;
+  --gd-faint: #94a3b8;
+  --gd-line: rgba(15, 23, 42, 0.08);
+  --gd-hover: rgba(15, 23, 42, 0.055);
+  --gd-accent: #2563eb;
+  --gd-accent-soft: rgba(37, 99, 235, 0.1);
+  --gd-alert: #d97706;
+  --gd-ok: #16a34a;
+  --gd-shadow: 0 1px 2px rgba(15, 23, 42, 0.06), 0 4px 14px rgba(15, 23, 42, 0.06);
+
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.35) transparent;
+}
+html.is-desktop[data-gd-rail="wide"] {
+  --gd-rail: 232px;
+}
+html.is-desktop[data-gd-panel]:not([data-gd-panel=""]) {
+  --gd-shell-panel: 348px;
+}
+html.is-desktop:has(.gd-sheet[data-open="true"]) {
+  --gd-sheet: 416px;
+}
+
+html.is-desktop.dark {
+  --gd-chrome: #070c18;
+  --gd-surface: #0c1426;
+  --gd-canvas: #0f172a;
+  --gd-active: #1b2539;
+  --gd-ink: #f1f5f9;
+  --gd-muted: #94a3b8;
+  --gd-faint: #64748b;
+  --gd-line: rgba(148, 163, 184, 0.14);
+  --gd-hover: rgba(148, 163, 184, 0.1);
+  --gd-accent: #60a5fa;
+  --gd-accent-soft: rgba(96, 165, 250, 0.14);
+  --gd-alert: #fbbf24;
+  --gd-ok: #4ade80;
+  --gd-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 18px rgba(0, 0, 0, 0.25);
+}
+html.is-desktop.gray {
+  --gd-chrome: #131313;
+  --gd-surface: #191919;
+  --gd-canvas: #1e1e1e;
+  --gd-active: #2a2a2b;
+  --gd-ink: #f0f0f0;
+  --gd-muted: #a3a3a3;
+  --gd-faint: #6b6b6b;
+  --gd-line: rgba(255, 255, 255, 0.08);
+  --gd-hover: rgba(255, 255, 255, 0.06);
+  --gd-accent: #5b9bff;
+  --gd-accent-soft: rgba(91, 155, 255, 0.13);
+  --gd-alert: #fbbf24;
+  --gd-ok: #4ade80;
+  --gd-shadow: 0 1px 2px rgba(0, 0, 0, 0.35), 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+
+html.is-desktop body {
+  background: var(--gd-canvas);
+  padding-left: var(--gd-inset);
+  transition: padding-left 300ms var(--gd-ease);
+}
+
+/* ── Cadre du canevas ─────────────────────────────────────────────────── */
+.gd-frame {
+  position: fixed;
+  top: var(--gd-gap);
+  right: var(--gd-gap);
+  bottom: var(--gd-gap);
+  left: var(--gd-inset);
+  z-index: 35;
+  border-radius: 18px;
+  pointer-events: none;
+  box-shadow:
+    0 0 0 1px var(--gd-line),
+    0 0 0 100vmax var(--gd-chrome);
+  transition: left 300ms var(--gd-ease);
+}
+
+/* ── Barre latérale ───────────────────────────────────────────────────── */
+.gd-rail {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 70;
+  display: flex;
+  width: var(--gd-rail);
+  flex-direction: column;
+  gap: 2px;
+  padding: 14px 10px 12px;
+  color: var(--gd-muted);
+  font-family: var(--main-font);
+  transition: width 300ms var(--gd-ease);
+}
+
+/* Les libellés (masqués quand la barre est repliée) ne doivent pas élargir
+   la piste de la grille. */
+.gd-rail .grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.gd-brand {
+  display: flex;
+  height: 44px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-left: 2px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.gd-brand__tile {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 11px;
+  box-shadow: 0 0 0 1px var(--gd-line);
+}
+.gd-brand__word {
+  height: 22px;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+[data-gd-rail="wide"] .gd-brand__word {
+  opacity: 1;
+  transition-delay: 90ms;
+}
+
+.gd-section-label {
+  height: 0;
+  overflow: hidden;
+  padding-left: 12px;
+  color: var(--gd-faint);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0;
+  transition:
+    opacity 180ms ease,
+    height 300ms var(--gd-ease);
+}
+[data-gd-rail="wide"] .gd-section-label {
+  height: 26px;
+  opacity: 1;
+  padding-top: 8px;
+}
+
+.gd-sep {
+  height: 1px;
+  margin: 10px 8px;
+  background: var(--gd-line);
+}
+
+.gd-item {
+  position: relative;
+  display: flex;
+  height: 44px;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+.gd-item:hover {
+  background: var(--gd-hover);
+  color: var(--gd-ink);
+}
+.gd-item:focus-visible {
+  outline: 2px solid var(--gd-accent);
+  outline-offset: 1px;
+}
+.gd-item[aria-current="page"],
+.gd-item[aria-pressed="true"] {
+  background: var(--gd-active);
+  color: var(--gd-ink);
+  box-shadow: var(--gd-shadow);
+}
+.gd-item[aria-current="page"] .gd-item__icon,
+.gd-item[aria-pressed="true"] .gd-item__icon {
+  color: var(--gd-accent);
+}
+.gd-item__icon {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  place-items: center;
+}
+.gd-item__icon svg {
+  width: 22px;
+  height: 22px;
+}
+.gd-item__label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+[data-gd-rail="wide"] .gd-item__label {
+  opacity: 1;
+  transition-delay: 80ms;
+}
+.gd-item__kbd {
+  margin-left: auto;
+  color: var(--gd-faint);
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+[data-gd-rail="wide"] .gd-item:hover .gd-item__kbd {
+  opacity: 1;
+}
+
+.gd-badge {
+  position: absolute;
+  top: 6px;
+  left: 25px;
+  display: grid;
+  min-width: 17px;
+  height: 17px;
+  place-items: center;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--gd-alert);
+  box-shadow: 0 0 0 2px var(--gd-chrome);
+  color: #1c1204;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* Infobulle du rail replié. */
+.gd-tip {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 12px);
+  z-index: 1;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: var(--gd-ink);
+  color: var(--gd-canvas);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-4px, -50%);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+.gd-tip kbd {
+  margin-left: 8px;
+  font-family: inherit;
+  opacity: 0.55;
+}
+html.is-desktop:not([data-gd-rail="wide"]) .gd-item:hover .gd-tip,
+html.is-desktop:not([data-gd-rail="wide"]) .gd-item:focus-visible .gd-tip {
+  opacity: 1;
+  transform: translate(0, -50%);
+  transition-delay: 250ms;
+}
+
+.gd-rail__spacer {
+  flex: 1;
+}
+
+/* ── Panneau latéral ──────────────────────────────────────────────────── */
+.gd-panel {
+  position: fixed;
+  top: var(--gd-gap);
+  bottom: var(--gd-gap);
+  left: var(--gd-rail);
+  z-index: 60;
+  display: flex;
+  width: calc(348px - var(--gd-gap));
+  flex-direction: column;
+  border-radius: 18px;
+  background: var(--gd-surface);
+  box-shadow: 0 0 0 1px var(--gd-line);
+  color: var(--gd-ink);
+  font-family: var(--main-font);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-16px);
+  transition:
+    opacity 200ms ease,
+    transform 300ms var(--gd-ease),
+    left 300ms var(--gd-ease);
+}
+.gd-panel[data-open="true"] {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+.gd-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 22px 18px 14px 22px;
+}
+.gd-panel__eyebrow {
+  color: var(--gd-faint);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.gd-panel__title {
+  margin-top: 4px;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+.gd-panel__body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 0 14px 18px;
+  scrollbar-width: thin;
+}
+.gd-panel__body > ul {
+  margin-bottom: 18px;
+}
+.gd-panel__foot {
+  position: sticky;
+  bottom: -18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: auto -14px -18px;
+  padding: 12px 18px 14px 22px;
+  border-top: 1px solid var(--gd-line);
+  border-radius: 0 0 18px 18px;
+  background: var(--gd-surface);
+  color: var(--gd-muted);
+  font-size: 12px;
+}
+
+.gd-icon-btn {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--gd-muted);
+  cursor: pointer;
+}
+.gd-icon-btn svg {
+  width: 18px;
+  height: 18px;
+}
+.gd-icon-btn:hover {
+  background: var(--gd-hover);
+  color: var(--gd-ink);
+}
+
+.gd-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  color: var(--gd-accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+.gd-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Puces de filtre — même vocabulaire que les pilules « Tendances ». */
+.gd-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 8px 14px;
+}
+.gd-chip {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--gd-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--gd-muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    border-color 140ms ease;
+}
+.gd-chip:hover {
+  border-color: var(--gd-faint);
+  color: var(--gd-ink);
+}
+.gd-chip[aria-pressed="true"] {
+  border-color: var(--gd-ink);
+  background: var(--gd-ink);
+  color: var(--gd-canvas);
+}
+
+/* Lignes de liste (perturbations, trajets). */
+.gd-row {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 10px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+.gd-row:hover {
+  background: var(--gd-hover);
+}
+.gd-row[aria-expanded="true"],
+.gd-row[aria-current="true"] {
+  background: var(--gd-active);
+  box-shadow: var(--gd-shadow);
+}
+.gd-row__title {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.gd-row__meta {
+  margin-top: 2px;
+  color: var(--gd-muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+.gd-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 300ms var(--gd-ease),
+    opacity 200ms ease;
+}
+.gd-collapse[data-open="true"] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.gd-collapse > div {
+  min-height: 0;
+  overflow: hidden;
+}
+.gd-chevron {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  margin-top: 2px;
+  color: var(--gd-faint);
+  transition: transform 300ms var(--gd-ease);
+}
+.gd-chevron[data-open="true"] {
+  transform: rotate(180deg);
+}
+.gd-clamp-2 {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.gd-empty {
+  margin: 24px 8px;
+  padding: 28px 20px;
+  border: 1px dashed var(--gd-line);
+  border-radius: 16px;
+  color: var(--gd-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+.gd-empty strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--gd-ink);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+/* Tracé « départ → arrivée » des trajets enregistrés. */
+.gd-route {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.gd-route::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 4px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--gd-line);
+}
+.gd-route span {
+  position: relative;
+  overflow: hidden;
+  padding-left: 18px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.gd-route span::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 10px;
+  height: 10px;
+  margin-top: -5px;
+  border: 2px solid var(--gd-muted);
+  border-radius: 999px;
+  background: var(--gd-surface);
+  box-sizing: border-box;
+}
+.gd-route span:last-child::before {
+  border-color: var(--gd-accent);
+  background: var(--gd-accent);
+}
+.gd-tag {
+  display: inline-flex;
+  height: 22px;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 7px;
+  background: var(--gd-hover);
+  color: var(--gd-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* Panneau « À propos ». */
+.gd-about-lede {
+  padding: 0 8px 18px;
+  color: var(--gd-muted);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.gd-about-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 10px;
+  border-radius: 14px;
+  color: var(--gd-ink);
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background-color 140ms ease;
+}
+.gd-about-link:hover {
+  background: var(--gd-hover);
+}
+.gd-about-link small {
+  display: block;
+  color: var(--gd-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+.gd-about-link svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  color: var(--gd-muted);
+}
+.gd-about-link .gd-arrow {
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
+  color: var(--gd-faint);
+}
+.gd-promo {
+  display: block;
+  margin: 14px 4px 0;
+  padding: 18px;
+  border-radius: 16px;
+  background: var(--gd-active);
+  box-shadow: var(--gd-shadow);
+  color: var(--gd-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+  text-decoration: none;
+}
+.gd-promo img {
+  height: 22px;
+  margin-bottom: 10px;
+}
+.gd-keys {
+  display: grid;
+  gap: 8px;
+  margin: 18px 8px 0;
+  color: var(--gd-muted);
+  font-size: 12.5px;
+}
+.gd-keys div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.gd-kbd {
+  display: inline-flex;
+  min-width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  border: 1px solid var(--gd-line);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  color: var(--gd-ink);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* ── Sheets des pages, en barre latérale (components/AdaptiveSheet.jsx) ── */
+/* La barre glisse depuis la navigation pendant que le canevas s'écarte :
+   même courbe et même durée à l'ouverture et à la fermeture. */
+.gd-sheet {
+  position: fixed;
+  top: var(--gd-gap);
+  bottom: var(--gd-gap);
+  left: calc(var(--gd-rail) + var(--gd-shell-panel));
+  z-index: 62;
+  width: calc(416px - var(--gd-gap));
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-32px) scale(0.985);
+  transform-origin: left center;
+  transition:
+    opacity 220ms ease,
+    transform 300ms var(--gd-ease),
+    left 300ms var(--gd-ease);
+}
+.gd-sheet[data-open="true"] {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+.gd-sheet__card {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--sheet-bg);
+  box-shadow:
+    0 0 0 1px var(--gd-line),
+    var(--gd-shadow);
+}
+.gd-sheet__head {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  padding: 10px 10px 0;
+}
+.gd-sheet__content {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+.gd-sheet__scroll {
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+/* Sur mobile, les barres de défilement se superposent au contenu ; sur PC
+   elles prennent de la place et faisaient déborder les vues des sheets en
+   largeur (barre horizontale parasite). */
+.gd-sheet .overflow-y-auto {
+  overflow-x: hidden;
+  scrollbar-width: thin;
+}
+
+/* Les variantes `sm:` suivent la largeur de la fenêtre, pas celle de la
+   barre : le formulaire de trajet doit y garder sa mise en page mobile. */
+.gd-sheet .sm\:grid-cols-2 {
+  grid-template-columns: minmax(0, 1fr);
+}
+.gd-sheet .sm\:col-span-1 {
+  grid-column: 1 / -1;
+}
+.gd-sheet .sm\:col-span-2,
+.gd-sheet .sm\:col-start-2 {
+  grid-column: auto;
+}
+
+/* Carte d'un trajet (« Voir sur la carte ») : elle remplit le canevas, à
+   côté de la fiche du trajet ouverte dans la barre latérale. */
+.gd-journey-map {
+  position: fixed;
+  top: var(--gd-gap);
+  right: var(--gd-gap);
+  bottom: var(--gd-gap);
+  left: var(--gd-inset);
+  /* Au-dessus du bouton d'action de la page (z-40), qui n'a rien à faire
+     sur la carte. */
+  z-index: 41;
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--gd-canvas);
+  box-shadow: 0 0 0 1px var(--gd-line);
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.985);
+  transition:
+    opacity 220ms ease,
+    transform 300ms var(--gd-ease),
+    left 300ms var(--gd-ease);
+}
+.gd-journey-map[data-open="true"] {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+.gd-journey-map__close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  z-index: 2;
+  display: inline-flex;
+  height: 40px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--gd-active);
+  box-shadow: var(--gd-shadow);
+  color: var(--gd-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.gd-journey-map__close:hover {
+  color: var(--gd-accent);
+}
+.gd-journey-map__close svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* ── Page Réglages (components/desktop/SettingsView.jsx) ───────────────── */
+.gd-settings {
+  display: grid;
+  grid-template-columns: 184px minmax(0, 1fr);
+  gap: 40px;
+  padding-top: 32px;
+  color: var(--gd-ink);
+}
+.gd-set-nav {
+  position: sticky;
+  top: 32px;
+  display: grid;
+  align-self: start;
+  gap: 2px;
+}
+.gd-set-nav__item {
+  display: flex;
+  height: 40px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--gd-muted);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+.gd-set-nav__item:hover {
+  background: var(--gd-hover);
+  color: var(--gd-ink);
+}
+.gd-set-nav__item[aria-current="true"] {
+  background: var(--gd-active);
+  box-shadow: var(--gd-shadow);
+  color: var(--gd-ink);
+}
+.gd-set-nav__icon {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+.gd-set-nav__item[aria-current="true"] .gd-set-nav__icon {
+  color: var(--gd-accent);
+}
+
+.gd-set-content {
+  display: grid;
+  gap: 36px;
+}
+.gd-set-section {
+  scroll-margin-top: 32px;
+}
+.gd-set-section__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.gd-set-section__desc {
+  margin: 4px 0 0;
+  color: var(--gd-muted);
+  font-size: 13px;
+}
+.gd-set-card {
+  margin-top: 14px;
+  overflow: hidden;
+  border: 1px solid var(--gd-line);
+  border-radius: 18px;
+  background: var(--gd-active);
+  box-shadow: var(--gd-shadow);
+}
+
+.gd-set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 18px 22px;
+}
+.gd-set-row + .gd-set-row {
+  border-top: 1px solid var(--gd-line);
+}
+.gd-set-row__text {
+  min-width: 0;
+  flex: 1;
+}
+.gd-set-row__title {
+  display: block;
+  font-size: 14.5px;
+  font-weight: 700;
+}
+.gd-set-row__hint {
+  max-width: 420px;
+  margin: 3px 0 0;
+  color: var(--gd-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.gd-set-row__control {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+}
+
+/* Interrupteur. */
+.gd-switch {
+  position: relative;
+  width: 44px;
+  height: 26px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--gd-faint);
+  cursor: pointer;
+  transition: background-color 200ms ease;
+}
+.gd-switch span {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 260ms var(--gd-ease);
+}
+.gd-switch[aria-checked="true"] {
+  background: var(--gd-accent);
+}
+.gd-switch[aria-checked="true"] span {
+  transform: translateX(18px);
+}
+.gd-switch:focus-visible,
+.gd-seg button:focus-visible,
+.gd-theme:focus-visible,
+.gd-btn:focus-visible {
+  outline: 2px solid var(--gd-accent);
+  outline-offset: 2px;
+}
+
+/* Curseur avec sa valeur. */
+.gd-range {
+  display: flex;
+  width: 260px;
+  align-items: center;
+  gap: 14px;
+}
+.gd-range input {
+  height: 6px;
+  flex: 1;
+  border-radius: 999px;
+  outline: none;
+  background: linear-gradient(
+    to right,
+    var(--gd-accent) var(--gd-range-pct),
+    var(--gd-line) var(--gd-range-pct)
+  ) !important;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.gd-range input::-webkit-slider-thumb {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.12),
+    0 2px 6px rgba(15, 23, 42, 0.25);
+  appearance: none;
+  -webkit-appearance: none;
+}
+.gd-range input::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 999px;
+  background: #ffffff;
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.12),
+    0 2px 6px rgba(15, 23, 42, 0.25);
+}
+.gd-range output {
+  min-width: 64px;
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-align: right;
+}
+
+/* Sélecteur segmenté. */
+.gd-seg {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--gd-hover);
+}
+.gd-seg button {
+  height: 32px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--gd-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease;
+}
+.gd-seg button:hover {
+  color: var(--gd-ink);
+}
+.gd-seg button[aria-checked="true"] {
+  background: var(--gd-canvas);
+  box-shadow: var(--gd-shadow);
+  color: var(--gd-ink);
+}
+
+/* Thèmes en miniatures. */
+.gd-themes {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  padding: 20px 22px 22px;
+}
+.gd-theme {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--gd-ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.gd-theme__frame {
+  display: block;
+  overflow: hidden;
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px var(--gd-line);
+  transition:
+    box-shadow 180ms ease,
+    transform 180ms ease;
+}
+.gd-theme:hover .gd-theme__frame {
+  transform: translateY(-2px);
+}
+.gd-theme[aria-checked="true"] .gd-theme__frame {
+  box-shadow:
+    0 0 0 2px var(--gd-accent),
+    0 0 0 5px var(--gd-accent-soft);
+}
+.gd-theme__art {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.gd-theme__split {
+  position: relative;
+  display: block;
+}
+.gd-theme__split-dark {
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(100% 0, 100% 100%, 0 100%);
+}
+.gd-theme__label {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+.gd-theme__label small {
+  display: block;
+  color: var(--gd-muted);
+  font-size: 11.5px;
+  font-weight: 500;
+}
+
+/* Boutons. */
+.gd-btn {
+  height: 36px;
+  padding: 0 16px;
+  border: 1px solid var(--gd-line);
+  border-radius: 10px;
+  background: var(--gd-canvas);
+  color: var(--gd-ink);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease;
+}
+.gd-btn:hover {
+  border-color: var(--gd-faint);
+}
+.gd-btn--danger {
+  border-color: transparent;
+  background: #dc2626;
+  color: #ffffff;
+}
+.gd-btn--danger:hover {
+  border-color: transparent;
+  background: #b91c1c;
+}
+
+/* ── En-tête de page ──────────────────────────────────────────────────── */
+.gd-header {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 48px 16px 0;
+  color: var(--gd-ink);
+}
+.gd-header__top {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+}
+.gd-live {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--gd-ok);
+}
+.gd-live::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  background: var(--gd-ok);
+  opacity: 0.35;
+  animation: gd-pulse 2.4s ease-out infinite;
+}
+.gd-live[data-tone="alert"],
+.gd-live[data-tone="alert"]::after {
+  background: var(--gd-alert);
+}
+@keyframes gd-pulse {
+  0% {
+    transform: scale(0.4);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+/* Même construction que le logo : un mot à l'encre, l'autre en bleu GreGo. */
+.gd-title {
+  margin: 0;
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+.gd-title em {
+  color: var(--gd-accent);
+  font-style: normal;
+}
+.gd-lede {
+  max-width: 460px;
+  margin: 8px 0 0;
+  color: var(--gd-muted);
+  font-size: 14px;
+  line-height: 1.55;
+}
+.gd-clock {
+  flex: none;
+  padding-bottom: 4px;
+  text-align: right;
+}
+.gd-clock__time {
+  font-size: 30px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.gd-clock__date {
+  margin-top: 6px;
+  color: var(--gd-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+/* État du réseau, en carte comme le reste de l'application. */
+.gd-ticker {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  gap: 14px;
+  margin-top: 24px;
+  padding: 0 18px;
+  border: 1px solid var(--gd-line);
+  border-radius: 18px;
+  background: var(--gd-active);
+  box-shadow: var(--gd-shadow);
+  color: var(--gd-muted);
+  font-size: 13px;
+}
+.gd-ticker strong {
+  color: var(--gd-ink);
+  font-weight: 700;
+}
+.gd-ticker__lines {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+}
+.gd-ticker__more {
+  margin-left: 4px;
+  color: var(--gd-faint);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Changement de page : le contenu apparaît en fondu, l'en-tête monte
+   légèrement. (Pas de transform sur .gd-page : il contient des éléments
+   `fixed` que cela décalerait.) */
+html.is-desktop .gd-header {
+  animation: gd-rise 360ms var(--gd-ease) backwards;
+}
+html.is-desktop .gd-page,
+html.is-desktop .gd-floating-search {
+  animation: gd-fade 320ms ease backwards;
+}
+@keyframes gd-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+@keyframes gd-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ── Intégration des pages existantes ─────────────────────────────────── */
+html.is-desktop .gd-page {
+  max-width: 820px;
+  margin-inline: auto;
+  background: transparent !important;
+}
+html.is-desktop .gd-page .max-w-md:not(.fixed) {
+  max-width: none;
+}
+/* Grille des lignes de l'Infotrafic : plus de colonnes sur grand écran. */
+html.is-desktop .gd-page .grid-cols-5 {
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+}
+html.is-desktop .gd-hide {
+  display: none !important;
+}
+
+/* Sélecteur de trajets : la bande pleine largeur devient une carte. */
+html.is-desktop .gd-trip-bar {
+  margin: 20px 16px 0;
+  border: 1px solid var(--gd-line) !important;
+  border-radius: 18px;
+}
+
+/* Bouton d'action principal, ancré au coin du canevas plutôt qu'à côté de
+   la barre d'onglets mobile (absente ici). */
+html.is-desktop [data-onboarding="open-config"] {
+  right: 36px !important;
+  bottom: 36px !important;
+}
+
+/* Recherche flottante de la vue carte. */
+html.is-desktop .gd-floating-search {
+  top: 28px;
+  right: auto;
+  left: calc(var(--gd-inset) + 28px);
+  width: 420px;
+  transition: left 300ms var(--gd-ease);
+}
+
+/* Les calques plein écran des pages couvrent le canevas, pas le chrome. */
+html.is-desktop .fixed.inset-0,
+html.is-desktop .fixed.inset-x-0 {
+  left: var(--gd-inset) !important;
+}
+html.is-desktop .fixed.inset-x-4 {
+  left: calc(var(--gd-inset) + 1rem);
+}
+
+/* Les rares tiroirs faits main (sélecteur d'arrêt sur la carte) restent en
+   bas, mais centrés dans le canevas. */
+html.is-desktop .fixed.inset-x-0.bottom-0,
+html.is-desktop .fixed.bottom-0.left-0.right-0 {
+  left: var(--gd-inset) !important;
+  max-width: 640px;
+  margin-inline: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.is-desktop body,
+  .gd-frame,
+  .gd-rail,
+  .gd-panel,
+  .gd-sheet,
+  .gd-floating-search,
+  .gd-collapse,
+  .gd-chevron,
+  .gd-journey-map,
+  .gd-switch,
+  .gd-switch span,
+  .gd-theme__frame {
+    transition: none;
+  }
+  .gd-header,
+  .gd-page,
+  .gd-floating-search {
+    animation: none !important;
+  }
+  .gd-live::after {
+    animation: none;
+  }
+}

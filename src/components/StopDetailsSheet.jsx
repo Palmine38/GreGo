@@ -1,5 +1,5 @@
 ﻿import { useEffect, useMemo, useRef, useState } from "react";
-import { Sheet } from "react-modal-sheet";
+import { Sheet } from "./AdaptiveSheet.jsx";
 import LineIcon, { LINE_COLORS } from "./lines-icons.jsx";
 import { DisruptionItem } from "./DisruptionItem.jsx";
 import { useTheme } from "../hooks/useTheme.js";
@@ -81,9 +81,23 @@ function extractPassages(
 
     const times = Array.isArray(item.times) ? item.times : [];
     times.forEach((st) => {
+      // Course qui termine à cet arrêt : ce n'est pas un départ.
+      if (
+        String(st.pickupType ?? "") === "1" ||
+        sameStopName(item.pattern?.lastStopName, st.stopName)
+      ) {
+        return;
+      }
       const serviceDay = st.serviceDay ?? 0;
-      const arrival = st.realtimeArrival ?? st.scheduledArrival ?? 0;
-      const ts = serviceDay + arrival;
+      // Heure de départ (et non d'arrivée) : c'est elle qui compte pour
+      // l'usager qui attend à l'arrêt.
+      const departure =
+        st.realtimeDeparture ??
+        st.scheduledDeparture ??
+        st.realtimeArrival ??
+        st.scheduledArrival ??
+        0;
+      const ts = serviceDay + departure;
       const minutes = Math.round((ts - now) / 60);
       if (!allTimes && (minutes < minMinutes || minutes > maxMinutes)) return;
 
@@ -667,6 +681,10 @@ function dateInputToParam(value) {
 // "détail d'une ligne" qui utilisent le même cluster.
 const theoreticalCache = new Map();
 
+// Avant cette heure, les courses encore en circulation appartiennent à la
+// journée de service de la veille (même seuil que GreLines).
+const SERVICE_DAY_START_HOUR = 4;
+
 async function fetchTheoreticalStoptimes(clusterId, dateStr) {
   const cacheKey = `${clusterId}::${dateStr}`;
   if (theoreticalCache.has(cacheKey)) return theoreticalCache.get(cacheKey);
@@ -677,6 +695,29 @@ async function fetchTheoreticalStoptimes(clusterId, dateStr) {
   const data = await res.json();
   theoreticalCache.set(cacheKey, data);
   return data;
+}
+
+// Horaires d'une date ; pour aujourd'hui avant 4 h, on y ajoute la fin de
+// service de la veille (courses d'après minuit).
+async function fetchTheoreticalDay(clusterId, dateValue) {
+  const today = await fetchTheoreticalStoptimes(
+    clusterId,
+    dateInputToParam(dateValue),
+  );
+  const now = new Date();
+  if (
+    dateValue !== formatDateInputValue(now) ||
+    now.getHours() >= SERVICE_DAY_START_HOUR
+  ) {
+    return today;
+  }
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const previous = await fetchTheoreticalStoptimes(
+    clusterId,
+    dateInputToParam(formatDateInputValue(yesterday)),
+  ).catch(() => []);
+  return [...previous, ...today];
 }
 
 function DirectionText({ direction }) {
@@ -975,7 +1016,7 @@ function PassageSection({
     setTheoreticalLoading(true);
     setTheoreticalError(false);
 
-    fetchTheoreticalStoptimes(clusterId, dateStr)
+    fetchTheoreticalDay(clusterId, theoreticalDate)
       .then((data) => {
         if (cancelled) return;
         dayPayloadRef.current = data;
@@ -998,16 +1039,27 @@ function PassageSection({
     };
   }, [isTheoreticalView, clusterId, loadedDate, theoreticalDate]);
 
+  // Horloge à la minute : les passages d'aujourd'hui déjà partis sortent de
+  // la liste au fil du temps.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isTheoreticalView) return undefined;
+    const id = setInterval(() => setNow(Date.now()), 60 * 1000);
+    return () => clearInterval(id);
+  }, [isTheoreticalView]);
+  const isToday = theoreticalDate === formatDateInputValue(new Date(now));
+
   const theoreticalPassages = useMemo(() => {
     if (!dayPayload) return [];
-    // Journée complète : le payload est déjà scopé à une seule journée
-    // (endpoint /stoptimes/:date), on prend tout, trié du plus tôt (minuit)
-    // au plus tard (23h59), sans filtrer sur une fenêtre relative à "maintenant".
-    return extractPassages(dayPayload, {
+    const passages = extractPassages(dayPayload, {
       targetLine,
       allTimes: true,
     });
-  }, [dayPayload, targetLine]);
+    // Aujourd'hui : seulement les passages à venir. Une autre date : la
+    // journée complète.
+    if (!isToday) return passages;
+    return passages.filter((passage) => passage.ts >= now - 60 * 1000);
+  }, [dayPayload, targetLine, isToday, now]);
 
   return (
     <div>
@@ -1052,7 +1104,9 @@ function PassageSection({
             <p className="text-sm text-slate-500 py-2">
               {theoreticalError
                 ? "Horaires théoriques indisponibles."
-                : "Aucun horaire théorique aujourd'hui."}
+                : isToday && dayPayload?.length
+                  ? "Plus aucun passage prévu aujourd'hui."
+                  : "Aucun horaire théorique ce jour-là."}
             </p>
           ) : (
             <PassageList

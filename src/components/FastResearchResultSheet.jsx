@@ -1,5 +1,5 @@
 ﻿import React, { useEffect, useState } from "react";
-import { Sheet } from "react-modal-sheet";
+import { Sheet } from "./AdaptiveSheet.jsx";
 import { JourneyCard } from "./JourneyCard.jsx";
 import { JourneyDetailsContent } from "./lazyMaps.jsx";
 import { useTheme } from "../hooks/useTheme.js";

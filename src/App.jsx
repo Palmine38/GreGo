@@ -3,7 +3,6 @@ import {
   Routes,
   Route,
   Navigate,
-  useNavigate,
 } from "react-router-dom";
 import { lazy, Suspense, useEffect } from "react";
 import { getTheme } from "./hooks/useTheme.js";
@@ -17,6 +16,7 @@ import { prefetchMapChunk } from "./components/mapChunkLoaders.js";
 import { scheduleIdle } from "./utils/scheduleIdle.js";
 import { useLightMode } from "./hooks/useLightMode.js";
 import { useInstallPrompt } from "./hooks/useInstallPrompt.js";
+import { useIsDesktop } from "./hooks/useIsDesktop.js";
 import { InstallGreGoSheet } from "./components/InstallGreGoSheet.jsx";
 import {
   notifyInstallPromptResolved,
@@ -32,6 +32,10 @@ const MesTrajets = lazy(() => import("./mes-trajets.jsx"));
 const Settings = lazy(() => import("./settings.jsx"));
 const NoMobile = lazy(() => import("./nomobile.jsx"));
 const InfoTrafic = lazy(() => import("./infotrafic.jsx"));
+// Le shell desktop n'est jamais téléchargé par les mobiles.
+const DesktopShell = lazy(() =>
+  import("./components/desktop/DesktopShell.jsx"),
+);
 
 // Affiché le temps qu'arrive le module de la page. Volontairement identique au
 // pré-splash de index.html : le relais entre les deux est invisible, là où un
@@ -40,24 +44,6 @@ const InfoTrafic = lazy(() => import("./infotrafic.jsx"));
 // ici la bonne valeur dès le départ.
 function RouteFallback() {
   return <SplashScreen theme={getTheme()} />;
-}
-
-function DeviceGuard({ children }) {
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    const bypass = sessionStorage.getItem("bypassDeviceGuard") === "true";
-    if (bypass) return;
-
-    const isMobile =
-      /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
-      window.innerWidth < 768;
-    if (!isMobile) {
-      navigate("/mobile?false", { replace: true });
-    }
-  }, []);
-
-  return children;
 }
 
 function SeoRoute({ page, children }) {
@@ -93,6 +79,7 @@ function InstallPromptGate() {
 
 function App() {
   const lightMode = useLightMode();
+  const isDesktop = useIsDesktop();
 
   useEffect(() => {
     // Le thème est désormais appliqué par main.jsx avant le premier rendu, pour
@@ -116,6 +103,11 @@ function App() {
     <Router>
       <DevOverlay />
       <InstallPromptGate />
+      {isDesktop && (
+        <Suspense fallback={null}>
+          <DesktopShell />
+        </Suspense>
+      )}
       <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/mobile" element={<NoMobile />} />
@@ -123,9 +115,7 @@ function App() {
           path="/fastresearch"
           element={
             <SeoRoute page="fastResearch">
-              <DeviceGuard>
-                <FastResearch />
-              </DeviceGuard>
+              <FastResearch />
             </SeoRoute>
           }
         />
@@ -133,9 +123,7 @@ function App() {
           path="/mes-trajets"
           element={
             <SeoRoute page="trips">
-              <DeviceGuard>
-                <MesTrajets />
-              </DeviceGuard>
+              <MesTrajets />
             </SeoRoute>
           }
         />
@@ -143,9 +131,7 @@ function App() {
           path="/settings"
           element={
             <SeoRoute page="settings">
-              <DeviceGuard>
-                <Settings />
-              </DeviceGuard>
+              <Settings />
             </SeoRoute>
           }
         />
@@ -157,9 +143,7 @@ function App() {
           path="/infotrafic"
           element={
             <SeoRoute page="traffic">
-              <DeviceGuard>
-                <InfoTrafic />
-              </DeviceGuard>
+              <InfoTrafic />
             </SeoRoute>
           }
         />

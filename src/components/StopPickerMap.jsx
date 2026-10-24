@@ -4,7 +4,25 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import { createPortal } from "react-dom";
 import { MapSheet } from "./MapSheet.jsx";
 import { Source, Layer } from "react-map-gl/maplibre";
-import { Sheet } from "react-modal-sheet";
+import { Sheet } from "./AdaptiveSheet.jsx";
+import { isDesktopViewport } from "../hooks/useIsDesktop.js";
+
+// Sur ordinateur, aucune sheet ne recouvre le bas de la carte (seule la
+// recherche flotte en haut), et la barre latérale qui s'ouvre en même temps
+// change la largeur de la carte : on cadre une fois son animation terminée.
+const DESKTOP_FIT_PADDING = { top: 110, bottom: 56, left: 64, right: 64 };
+const fitDelay = (mobileDelay) => (isDesktopViewport() ? 340 : mobileDelay);
+import {
+  LINE_SHAPE_CASING_PAINT,
+  ROUND_LINE_LAYOUT,
+  WALK_LINE_LAYOUT,
+  WALK_LINE_PAINT,
+  endpointDotStyle,
+  lineShapePaint,
+  transferDotStyle,
+  transitCasingPaint,
+  transitLinePaint,
+} from "../utils/mapLineStyles.js";
 import LineIcon, { LINE_COLORS } from "./lines-icons.jsx";
 import { NearestStopsSheet } from "./nearestStops.jsx";
 import lineB from "./lineB.json";
@@ -832,7 +850,9 @@ export default function StopPickerMap({
   }, []);
 
   useEffect(() => {
-    if (!embedded || !navigator.geolocation) return undefined;
+    if (!embedded || !navigator.geolocation || isDesktopViewport()) {
+      return undefined;
+    }
     navigator.geolocation.getCurrentPosition(
       ({ coords }) =>
         setUserLocation({ lat: coords.latitude, lon: coords.longitude }),
@@ -1073,11 +1093,13 @@ export default function StopPickerMap({
           [Math.max(...lons), Math.max(...lats)],
         ],
         {
-          padding: { top: 150, bottom: 130, left: 40, right: 40 },
+          padding: isDesktopViewport()
+            ? DESKTOP_FIT_PADDING
+            : { top: 150, bottom: 130, left: 40, right: 40 },
           duration: 850,
         },
       );
-    }, 100);
+    }, fitDelay(100));
     return () => clearTimeout(timer);
   }, [journey]);
 
@@ -1097,11 +1119,13 @@ export default function StopPickerMap({
             [Math.max(...lons), Math.max(...lats)],
           ],
           {
-            padding: { top: 140, bottom: 260, left: 36, right: 36 },
+            padding: isDesktopViewport()
+              ? DESKTOP_FIT_PADDING
+              : { top: 140, bottom: 260, left: 36, right: 36 },
             duration: 800,
           },
         ),
-      80,
+      fitDelay(80),
     );
     return () => clearTimeout(timer);
   }, [activeLineTracePaths]);
@@ -1433,8 +1457,6 @@ export default function StopPickerMap({
       });
       setIsCentered(true);
       setNearestOpen(true);
-      setNearestSelectedStop(null);
-      setNearestPage(0);
       return;
     }
     setLocLoading(true);
@@ -1446,7 +1468,6 @@ export default function StopPickerMap({
         mapRef.current?.flyTo({ center: [lon, lat], zoom: 16, duration: 800 });
         setLocLoading(false);
         setNearestOpen(true);
-        setNearestPage(0);
       },
       () => setLocLoading(false),
       { enableHighAccuracy: true, timeout: 6000 },
@@ -1674,14 +1695,18 @@ export default function StopPickerMap({
                       }}
                     >
                       <Layer
+                        id="active-stop-line-casing"
+                        type="line"
+                        beforeId="Road labels"
+                        paint={LINE_SHAPE_CASING_PAINT}
+                        layout={ROUND_LINE_LAYOUT}
+                      />
+                      <Layer
                         id="active-stop-line-stroke"
                         type="line"
                         beforeId="Road labels"
-                        paint={{
-                          "line-color": activeLineColor,
-                          "line-width": 5,
-                        }}
-                        layout={{ "line-cap": "round", "line-join": "round" }}
+                        paint={lineShapePaint(activeLineColor)}
+                        layout={ROUND_LINE_LAYOUT}
                       />
                     </Source>
                   )}
@@ -2003,11 +2028,8 @@ export default function StopPickerMap({
                       <Layer
                         id="walk-route-line"
                         type="line"
-                        paint={{
-                          "line-color": "#94a3b8",
-                          "line-width": 3,
-                          "line-dasharray": [2, 2],
-                        }}
+                        paint={WALK_LINE_PAINT}
+                        layout={WALK_LINE_LAYOUT}
                       />
                     </Source>
                   )}
@@ -2036,19 +2058,25 @@ export default function StopPickerMap({
                             },
                           }}
                         >
+                          {!isWalk && (
+                            <Layer
+                              id={`journey-leg-casing-${index}`}
+                              type="line"
+                              beforeId="Road labels"
+                              paint={transitCasingPaint(color)}
+                              layout={ROUND_LINE_LAYOUT}
+                            />
+                          )}
                           <Layer
                             id={`journey-leg-line-${index}`}
                             type="line"
                             beforeId="Road labels"
-                            paint={{
-                              "line-color": isWalk ? "#94A3B8" : color,
-                              "line-width": isWalk ? 3 : 5,
-                              "line-dasharray": isWalk ? [2, 2] : [1],
-                            }}
-                            layout={{
-                              "line-cap": "round",
-                              "line-join": "round",
-                            }}
+                            paint={
+                              isWalk ? WALK_LINE_PAINT : transitLinePaint(color)
+                            }
+                            layout={
+                              isWalk ? WALK_LINE_LAYOUT : ROUND_LINE_LAYOUT
+                            }
                           />
                         </Source>
                       );
@@ -2058,6 +2086,9 @@ export default function StopPickerMap({
                       const isFinalEndpoint =
                         endpoint.legIndex === journeyLegs.length - 1 &&
                         endpoint.type === "end";
+                      const isJourneyEnd =
+                        isFinalEndpoint ||
+                        (endpoint.legIndex === 0 && endpoint.type === "start");
                       return (
                         <Marker
                           key={`vector-endpoint-${endpoint.legIndex}-${endpoint.type}`}
@@ -2068,20 +2099,15 @@ export default function StopPickerMap({
                           <div
                             style={{
                               position: "relative",
-                              width: 10,
-                              height: 10,
                               pointerEvents: "none",
                             }}
                           >
                             <div
-                              style={{
-                                width: 10,
-                                height: 10,
-                                borderRadius: "50%",
-                                backgroundColor: "white",
-                                border: "2px solid #64748B",
-                                boxShadow: "0 1px 4px rgba(0,0,0,0.35)",
-                              }}
+                              style={
+                                isJourneyEnd
+                                  ? endpointDotStyle
+                                  : transferDotStyle()
+                              }
                             />
                             {isFinalEndpoint && arrivalCoords?.name && (
                               <span

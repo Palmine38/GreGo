@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Sheet } from "react-modal-sheet";
+import { Sheet } from "./AdaptiveSheet.jsx";
 import { useTheme } from "../hooks/useTheme.js";
 import { useGbfsPricing } from "../hooks/useGbfsPricing.js";
 import { FaCar } from "react-icons/fa";

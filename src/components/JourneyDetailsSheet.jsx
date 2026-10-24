@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { JourneyTimeline } from "./JourneyTimeline.jsx";
 import { useCurrentTime } from "../hooks/useCurrentTime.js";
 import { useSettings } from "../hooks/useSettings.js";
@@ -6,9 +7,20 @@ import { formatTimeUntil } from "../utils/journey.js";
 import MapLibreMap, { Marker, Source, Layer } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import LineIcon, { LINE_COLORS, preloadLineData } from "./lines-icons.jsx";
-import { Sheet } from "react-modal-sheet";
+import { Sheet } from "./AdaptiveSheet.jsx";
+import { useEscapeLayer } from "../hooks/useEscapeLayer.js";
 import { useTheme } from "../hooks/useTheme.js";
 import { useJourneyLineShapes } from "../hooks/useJourneyLineShapes.js";
+import { useIsDesktop } from "../hooks/useIsDesktop.js";
+import {
+  ROUND_LINE_LAYOUT,
+  WALK_LINE_LAYOUT,
+  WALK_LINE_PAINT,
+  endpointDotStyle,
+  transferDotStyle,
+  transitCasingPaint,
+  transitLinePaint,
+} from "../utils/mapLineStyles.js";
 // Le calcul de tracé vit désormais dans utils/legGeometry.js : il est réutilisé
 // par des vues sans carte, qui n'ont donc plus à charger maplibre pour l'obtenir.
 import {
@@ -265,8 +277,14 @@ export function InlineJourneyMap({
   journey,
   lineColors,
   isOpen,
+  onClose,
   showIntermediateStops = true,
 }) {
+  // Sur ordinateur, la carte occupe tout le canevas à côté de la fiche du
+  // trajet, au lieu d'une vignette de 280 px glissée dans la fiche.
+  const isDesktop = useIsDesktop();
+  // Échap ferme la carte avant la fiche du trajet.
+  useEscapeLayer(isDesktop && isOpen, onClose);
   const mapRef = useRef(null);
   const [zoom, setZoom] = useState(13);
   const [iconsReady, setIconsReady] = useState(false);
@@ -396,37 +414,71 @@ export function InlineJourneyMap({
     ),
   ];
 
-  return (
+  const content = (
     <div
-      style={{
-        display: "grid",
-        gridTemplateRows: isOpen ? "1fr" : "0fr",
-        transition: "grid-template-rows 0.4s cubic-bezier(0.32, 0.72, 0, 1)",
-      }}
+      className={isDesktop ? "gd-journey-map" : undefined}
+      data-open={isDesktop ? isOpen : undefined}
+      inert={isDesktop && !isOpen}
+      style={
+        isDesktop
+          ? undefined
+          : {
+              display: "grid",
+              gridTemplateRows: isOpen ? "1fr" : "0fr",
+              transition:
+                "grid-template-rows 0.4s cubic-bezier(0.32, 0.72, 0, 1)",
+            }
+      }
     >
-      <div style={{ overflow: "hidden" }}>
+      <div style={{ overflow: "hidden", height: isDesktop ? "100%" : undefined }}>
         <div
-          style={{
-            height: 280,
-            borderRadius: 16,
-            overflow: "hidden",
-            marginBottom: 16,
-            opacity: isOpen ? 1 : 0,
-            transition: "opacity 0.3s ease 0.1s",
-            touchAction: "none",
-          }}
+          style={
+            isDesktop
+              ? { height: "100%" }
+              : {
+                  height: 280,
+                  borderRadius: 16,
+                  overflow: "hidden",
+                  marginBottom: 16,
+                  opacity: isOpen ? 1 : 0,
+                  transition: "opacity 0.3s ease 0.1s",
+                  touchAction: "none",
+                }
+          }
           onTouchStart={(e) => e.stopPropagation()}
           onTouchMove={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
           onPointerMove={(e) => e.stopPropagation()}
         >
+          {isDesktop && (
+            <button
+              type="button"
+              className="gd-journey-map__close"
+              onClick={onClose}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2}
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <path d="M6 18 18 6M6 6l12 12" />
+              </svg>
+              Fermer la carte
+            </button>
+          )}
           {mapMounted && (
             <MapLibreMap
               ref={mapRef}
               mapStyle={mapStyle}
               initialViewState={
                 bounds
-                  ? { bounds, fitBoundsOptions: { padding: 32 } }
+                  ? {
+                      bounds,
+                      fitBoundsOptions: { padding: isDesktop ? 80 : 32 },
+                    }
                   : { longitude: 5.74892, latitude: 45.18501, zoom: 13 }
               }
               style={{ width: "100%", height: "100%" }}
@@ -457,16 +509,23 @@ export function InlineJourneyMap({
                       geometry: { type: "LineString", coordinates: coords },
                     }}
                   >
+                    {!isWalk && (
+                      <Layer
+                        id={`leg-casing-${i}`}
+                        type="line"
+                        beforeId="Road labels"
+                        paint={transitCasingPaint(color)}
+                        layout={ROUND_LINE_LAYOUT}
+                      />
+                    )}
                     <Layer
                       id={`leg-line-${i}`}
                       type="line"
                       beforeId="Road labels"
-                      paint={{
-                        "line-color": isWalk ? "#94A3B8" : color,
-                        "line-width": isWalk ? 3 : 5,
-                        "line-dasharray": isWalk ? [2, 2] : [1],
-                      }}
-                      layout={{ "line-cap": "round", "line-join": "round" }}
+                      paint={
+                        isWalk ? WALK_LINE_PAINT : transitLinePaint(color)
+                      }
+                      layout={isWalk ? WALK_LINE_LAYOUT : ROUND_LINE_LAYOUT}
                     />
                   </Source>
                 );
@@ -480,16 +539,7 @@ export function InlineJourneyMap({
                   latitude={endpoint.coords[1]}
                   anchor="center"
                 >
-                  <div
-                    style={{
-                      width: 10,
-                      height: 10,
-                      borderRadius: "50%",
-                      backgroundColor: "white",
-                      border: "2px solid #64748B",
-                      boxShadow: "0 1px 4px rgba(0,0,0,0.35)",
-                    }}
-                  />
+                  <div style={transferDotStyle()} />
                 </Marker>
               ))}
 
@@ -522,17 +572,7 @@ export function InlineJourneyMap({
                   latitude={m.lat}
                   anchor="center"
                 >
-                  <div
-                    title={m.name}
-                    style={{
-                      width: 13,
-                      height: 13,
-                      borderRadius: "50%",
-                      backgroundColor: "white",
-                      border: "2.5px solid #334155",
-                      boxShadow: "0 1px 5px rgba(0,0,0,0.35)",
-                    }}
-                  />
+                  <div title={m.name} style={transferDotStyle()} />
                 </Marker>
               ))}
 
@@ -616,16 +656,7 @@ export function InlineJourneyMap({
                   latitude={m.lat}
                   anchor="center"
                 >
-                  <div
-                    style={{
-                      width: 13,
-                      height: 13,
-                      borderRadius: "50%",
-                      backgroundColor: "white",
-                      border: "2.5px solid #334155",
-                      boxShadow: "0 1px 5px rgba(0,0,0,0.35)",
-                    }}
-                  />
+                  <div style={endpointDotStyle} />
                 </Marker>
               ))}
               {/* Icônes de ligne */}
@@ -653,6 +684,8 @@ export function InlineJourneyMap({
       </div>
     </div>
   );
+
+  return isDesktop ? createPortal(content, document.body) : content;
 }
 
 /**
@@ -864,6 +897,7 @@ export function JourneyDetailsContent({
               journey={journey}
               lineColors={lineColors}
               isOpen={mapOpen}
+              onClose={() => setMapOpen(false)}
               showIntermediateStops={settings.showIntermediateStops}
             />
           </div>

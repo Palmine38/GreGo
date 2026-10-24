@@ -10,6 +10,8 @@ import {
 import { usePerfSettings } from "./hooks/usePerfSettings.js";
 import { NotificationToast } from "./components/NotificationToast.jsx";
 import { LIGHT_MODE_CHANGE_EVENT } from "./utils/lightMode.js";
+import { useIsDesktop } from "./hooks/useIsDesktop.js";
+import SettingsView from "./components/desktop/SettingsView.jsx";
 const DEBUG = true;
 
 const DEFAULTS = {
@@ -39,6 +41,7 @@ export default function Settings() {
   const fileInputRef = useRef(null);
   const isFirstRender = useRef(true);
   const { settings: perfSettings, setOverlayVisible } = usePerfSettings();
+  const isDesktop = useIsDesktop();
 
   const getInitialSettings = () => {
     try {
@@ -255,9 +258,49 @@ export default function Settings() {
           return true;
         }}
       />
-      <main className="min-h-screen bg-[#F8FAFC] px-4 pb-32 pt-5">
+      {isDesktop && (
+        <main className="gd-page min-h-screen px-4 pb-24">
+          <SettingsView
+            theme={theme}
+            setTheme={setTheme}
+            systemPrefersDark={systemPrefersDark}
+            wheelchair={wheelchair}
+            setWheelchair={setWheelchair}
+            speedInKmh={speedInKmh}
+            onSpeedChange={handleSpeedChange}
+            sliderVal={sliderVal}
+            sliderMax={SLIDER_MAX}
+            isMax={isMax}
+            numItineraries={numItineraries}
+            onItinerariesChange={handleNumItinerariesChange}
+            headerLines={headerLines}
+            setHeaderLines={setHeaderLines}
+            showJourneyDisruptions={showJourneyDisruptions}
+            setShowJourneyDisruptions={setShowJourneyDisruptions}
+            showIntermediateStops={showIntermediateStops}
+            setShowIntermediateStops={setShowIntermediateStops}
+            lightMode={lightMode}
+            setLightMode={setLightMode}
+            statsVisible={perfSettings.devMode && perfSettings.devOverlay}
+            setStatsVisible={setOverlayVisible}
+            onExport={downloadLocalStorage}
+            onImport={triggerFileUpload}
+            onReset={() => setResetStep("warn")}
+          />
+        </main>
+      )}
+      {/* Le champ fichier est partagé par les deux présentations. */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json"
+        onChange={uploadLocalStorage}
+        style={{ display: "none" }}
+      />
+      {!isDesktop && (
+      <main className="gd-page min-h-screen bg-[#F8FAFC] px-4 pb-32 pt-5">
         <div className="mx-auto max-w-md rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h1 className="mb-5 text-xl font-bold text-slate-900">Paramètres</h1>
+          <h1 className="gd-hide mb-5 text-xl font-bold text-slate-900">Paramètres</h1>
           <div className="space-y-4">
             <div className="border-b border-gray-200 pb-4">
               <span className="block text-sm font-semibold mb-3">
@@ -535,13 +578,6 @@ export default function Settings() {
                 >
                   Importer des données
                 </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".json"
-                  onChange={uploadLocalStorage}
-                  style={{ display: "none" }}
-                />
                 <button
                   onClick={() => {
                     console.log("🔴 Reset button clicked");
@@ -556,6 +592,7 @@ export default function Settings() {
           </div>
         </div>
       </main>
+      )}
 
       <div
         aria-hidden="true"

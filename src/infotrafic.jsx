@@ -113,11 +113,11 @@ export default function InfoTrafic() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-28">
+    <div className="gd-page min-h-screen bg-slate-50 pb-28">
       <Navbar />
       <main className="mx-auto max-w-md px-4 py-5">
         <div className="flex items-center justify-between gap-3">
-          <h1 className="mt-1 text-2xl font-bold text-slate-900">Infotrafic</h1>
+          <h1 className="gd-hide mt-1 text-2xl font-bold text-slate-900">Infotrafic</h1>
           {disruptedLines.length > 0 && (
             <select
               value={network}
